@@ -101,7 +101,14 @@ jobs:
             exit 1
           fi
           mkdir -p "$HOME/keys"
-          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$HOME/keys/enode-release.keystore"
+          if ! printf '%s' "$KEYSTORE_B64" | tr -d ' \t\r\n' | base64 --decode > "$HOME/keys/enode-release.keystore" 2>/dev/null; then
+            echo "::error::ANDROID_KEYSTORE_B64 is not valid base64. Re-copy the keystore base64 (starts with MII, no spaces)."
+            exit 1
+          fi
+          if ! keytool -list -keystore "$HOME/keys/enode-release.keystore" -storepass "$KEYSTORE_PASSWORD" -alias enode >/dev/null 2>&1; then
+            echo "::error::keystore did not open with ANDROID_KEYSTORE_PASSWORD and alias enode; check both secrets."
+            exit 1
+          fi
           chmod 600 "$HOME/keys/enode-release.keystore"
           cat > b_player/android/key.properties <<EOF
           storeFile=$HOME/keys/enode-release.keystore
