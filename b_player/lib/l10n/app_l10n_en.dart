@@ -135,6 +135,51 @@ class AppL10nEn extends AppL10n {
   String get aboutSourceCopied => 'Source URL copied';
 
   @override
+  String get aboutUpdate => 'App update';
+
+  @override
+  String get aboutUpdateIdle => 'Not checked';
+
+  @override
+  String get aboutCheckUpdate => 'Check for updates';
+
+  @override
+  String get aboutCheckingUpdate => 'Checking…';
+
+  @override
+  String get aboutUpToDate => 'Up to date';
+
+  @override
+  String get aboutNoRelease => 'No releases yet';
+
+  @override
+  String aboutNewVersion(String version) {
+    return 'New version $version';
+  }
+
+  @override
+  String get aboutDownloadUpdate => 'Download update';
+
+  @override
+  String updateAvailableTitle(String version) {
+    return 'New version $version';
+  }
+
+  @override
+  String updateAvailableBody(String current) {
+    return 'You are on $current. Download the new version?';
+  }
+
+  @override
+  String get updateLater => 'Later';
+
+  @override
+  String get updateDownload => 'Download';
+
+  @override
+  String get openLinkFailed => 'Could not open link';
+
+  @override
   String get settingsTooltip => 'Settings';
 
   @override

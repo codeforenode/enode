@@ -18,6 +18,7 @@ import 'l10n/l10n.dart';
 import 'legal.dart';
 import 'state/app_settings.dart';
 import 'state/app_state.dart';
+import 'state/app_update.dart';
 import 'theme.dart';
 import 'ui/shell.dart';
 
@@ -88,11 +89,20 @@ Future<void> main(List<String> args) async {
     engine: bootstrap == null ? null : MediaKitEngine(),
     desktop: desktop,
     settings: settings,
+    checkUpdates: true,
   ));
 }
 
 class BPlayerApp extends StatefulWidget {
-  const BPlayerApp({super.key, this.mqtt, this.bootstrap, this.engine, this.desktop, this.settings});
+  const BPlayerApp({
+    super.key,
+    this.mqtt,
+    this.bootstrap,
+    this.engine,
+    this.desktop,
+    this.settings,
+    this.checkUpdates = false,
+  });
 
   /// 测试可注入（例如指向本地 broker 或关闭连接）；正式运行取本机保存的参数。
   final MqttConfig? mqtt;
@@ -109,6 +119,9 @@ class BPlayerApp extends StatefulWidget {
   /// 本机偏好；正式运行在 runApp 前已加载，测试不传则由应用自己建一份。
   final AppSettings? settings;
 
+  /// 正式运行开启启动更新检查；测试默认关闭，避免联网。
+  final bool checkUpdates;
+
   @override
   State<BPlayerApp> createState() => _BPlayerAppState();
 }
@@ -116,6 +129,7 @@ class BPlayerApp extends StatefulWidget {
 class _BPlayerAppState extends State<BPlayerApp> with WidgetsBindingObserver {
   late final AppState _state;
   late final AppSettings _settings;
+  late final AppUpdateController _updates;
 
   @override
   void initState() {
@@ -125,6 +139,7 @@ class _BPlayerAppState extends State<BPlayerApp> with WidgetsBindingObserver {
     if (widget.settings == null) _settings.load();
     _settings.addListener(_onSettingsChanged);
     _applyLocale();
+    _updates = AppUpdateController();
     _state = AppState(
       mqtt: widget.mqtt,
       library: widget.bootstrap?.library,
@@ -168,6 +183,7 @@ class _BPlayerAppState extends State<BPlayerApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _settings.removeListener(_onSettingsChanged);
     _state.dispose();
+    _updates.dispose();
     _settings.dispose();
     super.dispose();
   }
@@ -203,7 +219,11 @@ class _BPlayerAppState extends State<BPlayerApp> with WidgetsBindingObserver {
             ),
             home: AnimatedBuilder(
               animation: Listenable.merge([_state, _state.edge]),
-              builder: (context, _) => Shell(state: _state, settings: _settings),
+              builder: (context, _) => Shell(
+                state: _state,
+                settings: _settings,
+                updates: widget.checkUpdates ? _updates : null,
+              ),
             ),
           );
         },

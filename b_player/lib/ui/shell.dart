@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../app_version.dart';
@@ -5,16 +7,26 @@ import '../edge/edge_node.dart';
 import '../l10n/l10n.dart';
 import '../state/app_settings.dart';
 import '../state/app_state.dart';
+import '../state/app_update.dart';
 import '../theme.dart';
 import 'cards.dart';
 import 'settings_dialog.dart';
 import 'sources_panel.dart';
+import 'update_bits.dart';
 
 /// 一屏外壳：顶栏状态 · 上区播放与队列 · 底部音源区，没有标签页。
 class Shell extends StatefulWidget {
-  const Shell({super.key, required this.state, required this.settings});
+  const Shell({
+    super.key,
+    required this.state,
+    required this.settings,
+    this.updates,
+  });
   final AppState state;
   final AppSettings settings;
+
+  /// 应用更新检查；演示/测试模式为 null，不联网也不显示入口。
+  final AppUpdateController? updates;
 
   @override
   State<Shell> createState() => _ShellState();
@@ -24,12 +36,42 @@ class _ShellState extends State<Shell> {
   /// 在线音源段只在本次运行内解锁，重启即恢复隐藏。
   bool _onlineUnlocked = false;
 
+  /// 启动检查只自动弹一次；之后手动检查的结果留在「关于」里。
+  bool _updatePrompted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final updates = widget.updates;
+    if (updates == null) return;
+    updates.addListener(_onUpdateChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(updates.check());
+    });
+  }
+
+  @override
+  void dispose() {
+    widget.updates?.removeListener(_onUpdateChanged);
+    super.dispose();
+  }
+
+  void _onUpdateChanged() {
+    final release = widget.updates?.available;
+    if (!mounted || release == null || _updatePrompted) return;
+    _updatePrompted = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(showAppUpdateDialog(context, release));
+    });
+  }
+
   void _unlockOnline() => _onlineUnlocked = true;
 
   void _openSettings() => showSettings(
         context,
         state: widget.state,
         settings: widget.settings,
+        updates: widget.updates,
         onlineUnlocked: _onlineUnlocked,
         onUnlockOnline: _unlockOnline,
       );

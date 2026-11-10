@@ -133,6 +133,51 @@ class AppL10nZh extends AppL10n {
   String get aboutSourceCopied => '原始碼位址已複製';
 
   @override
+  String get aboutUpdate => '應用程式更新';
+
+  @override
+  String get aboutUpdateIdle => '未檢查';
+
+  @override
+  String get aboutCheckUpdate => '檢查更新';
+
+  @override
+  String get aboutCheckingUpdate => '正在檢查…';
+
+  @override
+  String get aboutUpToDate => '已是最新版本';
+
+  @override
+  String get aboutNoRelease => '暫無發佈版本';
+
+  @override
+  String aboutNewVersion(String version) {
+    return '有新版本 $version';
+  }
+
+  @override
+  String get aboutDownloadUpdate => '下載新版本';
+
+  @override
+  String updateAvailableTitle(String version) {
+    return '發現新版本 $version';
+  }
+
+  @override
+  String updateAvailableBody(String current) {
+    return '目前 $current，要下載新版本嗎？';
+  }
+
+  @override
+  String get updateLater => '稍後';
+
+  @override
+  String get updateDownload => '前往下載';
+
+  @override
+  String get openLinkFailed => '無法開啟連結';
+
+  @override
   String get settingsTooltip => '設定';
 
   @override
@@ -2060,6 +2105,51 @@ class AppL10nZhHans extends AppL10nZh {
   String get aboutSourceCopied => '源代码地址已复制';
 
   @override
+  String get aboutUpdate => '应用更新';
+
+  @override
+  String get aboutUpdateIdle => '未检查';
+
+  @override
+  String get aboutCheckUpdate => '检查更新';
+
+  @override
+  String get aboutCheckingUpdate => '正在检查…';
+
+  @override
+  String get aboutUpToDate => '已是最新版本';
+
+  @override
+  String get aboutNoRelease => '暂无发布版本';
+
+  @override
+  String aboutNewVersion(String version) {
+    return '有新版本 $version';
+  }
+
+  @override
+  String get aboutDownloadUpdate => '下载新版本';
+
+  @override
+  String updateAvailableTitle(String version) {
+    return '发现新版本 $version';
+  }
+
+  @override
+  String updateAvailableBody(String current) {
+    return '当前版本 $current，前往下载？';
+  }
+
+  @override
+  String get updateLater => '稍后';
+
+  @override
+  String get updateDownload => '前往下载';
+
+  @override
+  String get openLinkFailed => '无法打开链接';
+
+  @override
   String get settingsTooltip => '设置';
 
   @override
@@ -3984,6 +4074,51 @@ class AppL10nZhHant extends AppL10nZh {
 
   @override
   String get aboutSourceCopied => '原始碼位址已複製';
+
+  @override
+  String get aboutUpdate => '應用程式更新';
+
+  @override
+  String get aboutUpdateIdle => '未檢查';
+
+  @override
+  String get aboutCheckUpdate => '檢查更新';
+
+  @override
+  String get aboutCheckingUpdate => '正在檢查…';
+
+  @override
+  String get aboutUpToDate => '已是最新版本';
+
+  @override
+  String get aboutNoRelease => '暫無發佈版本';
+
+  @override
+  String aboutNewVersion(String version) {
+    return '有新版本 $version';
+  }
+
+  @override
+  String get aboutDownloadUpdate => '下載新版本';
+
+  @override
+  String updateAvailableTitle(String version) {
+    return '發現新版本 $version';
+  }
+
+  @override
+  String updateAvailableBody(String current) {
+    return '目前 $current，要下載新版本嗎？';
+  }
+
+  @override
+  String get updateLater => '稍後';
+
+  @override
+  String get updateDownload => '前往下載';
+
+  @override
+  String get openLinkFailed => '無法開啟連結';
 
   @override
   String get settingsTooltip => '設定';
