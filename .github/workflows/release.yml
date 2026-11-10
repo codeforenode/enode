@@ -11,7 +11,10 @@ permissions:
 jobs:
   verify:
     name: Analyze and test
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
 
@@ -91,20 +94,34 @@ jobs:
       - name: Restore signing key
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
-          if [ -z "$KEYSTORE_B64" ]; then
-            echo "::error::ANDROID_KEYSTORE_B64 secret is not set; see README."
+          if [ -z "$KEYSTORE_B64" ] || [ -z "$KEYSTORE_PASSWORD" ]; then
+            echo "::error::ANDROID_KEYSTORE_B64 and ANDROID_KEYSTORE_PASSWORD must be set; see README."
             exit 1
           fi
-          mkdir -p "$HOME/.android"
-          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$HOME/.android/debug.keystore"
-          chmod 600 "$HOME/.android/debug.keystore"
+          mkdir -p "$HOME/keys"
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$HOME/keys/enode-release.keystore"
+          chmod 600 "$HOME/keys/enode-release.keystore"
+          cat > b_player/android/key.properties <<EOF
+          storeFile=$HOME/keys/enode-release.keystore
+          storePassword=$KEYSTORE_PASSWORD
+          keyAlias=enode
+          keyPassword=$KEYSTORE_PASSWORD
+          EOF
+          chmod 600 b_player/android/key.properties
 
       - name: Build APK
         working-directory: b_player
         run: |
           flutter pub get
           flutter build apk --release
+
+      - name: Verify signature
+        working-directory: b_player
+        run: |
+          apksigner=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
+          "$apksigner" verify --print-certs build/app/outputs/flutter-apk/app-release.apk
 
       - uses: actions/upload-artifact@v4
         with:

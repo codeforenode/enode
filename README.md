@@ -61,20 +61,33 @@ flutter build apk --release     # -> build/app/outputs/flutter-apk/app-release.a
 release.bat                     # 改版本 → 提交 → 推公开仓 → 打 tag
 release.bat -DryRun             # 只打印计划，不提交、不推送
 release.bat -Version 1.4.1+4    # 直接指定版本号
+release.bat -Proxy http://127.0.0.1:7890   # GitHub 走代理（省略时自动读系统代理）
 ```
+
+脚本只把 `github.com` 的 git 操作走代理，私有仓 origin 维持直连。
 
 推送 `v<版本名>` 后，[`release`](.github/workflows/release.yml) 工作流会校验 tag 与 `pubspec.yaml`
-一致，在 Ubuntu 上跑 analyze/test 和 APK 构建，在 Windows 上安装 Inno Setup、构建便携包/安装包，
+一致，在 Windows 上跑 analyze/test 并构建便携包/安装包，在 Ubuntu 上构建 APK，
 最后自动发布 Release。Windows 构建会从 Spotify CDN 拉取固定版本 CEF，通常 20–30 分钟。
 
-Android release 包沿用现有调试证书签名；换证书会导致已安装设备无法覆盖升级。首次使用需在公开仓
-**Settings → Secrets and variables → Actions** 添加 `ANDROID_KEYSTORE_B64`，内容为本机证书的 Base64：
+Android release 包使用专用 release keystore 签名；换证书会导致已安装设备无法覆盖升级。首次使用先生成证书：
 
 ```powershell
-[Convert]::ToBase64String([IO.File]::ReadAllBytes("$env:USERPROFILE\.android\debug.keystore")) | Set-Clipboard
+keytool -genkeypair -storetype PKCS12 -keystore enode-release.keystore -alias enode `
+  -keyalg RSA -keysize 2048 -validity 10000
 ```
 
-CI 会把它还原到 `~/.android/debug.keystore` 再构建。Actions 日志公开，不包含凭据。
+本机把 `storeFile`、`storePassword`、`keyAlias`、`keyPassword` 写入 `b_player/android/key.properties`
+（该文件已被 gitignore），release 构建即使用这把证书。CI 侧在公开仓
+**Settings → Secrets and variables → Actions** 添加两个 Secret：`ANDROID_KEYSTORE_B64`（证书 Base64）
+与 `ANDROID_KEYSTORE_PASSWORD`（store/key 密码，PKCS12 两者相同）：
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("path\to\enode-release.keystore")) | Set-Clipboard
+```
+
+工作流会还原证书、生成 `android/key.properties` 后再构建，并校验 APK 签名。Actions 日志公开，
+不包含凭据。证书与密码需离线备份，丢失后所有已安装设备都必须卸载重装才能继续升级。
 
 曲库索引持久化在应用支持目录；来源为本地目录与 WebDAV。WebDAV 通过递归 PROPFIND 扫描，
 跳过 `@eaDir`、回收站与点目录；凭据保存在本机 SharedPreferences，不拼 URL、不写日志。
