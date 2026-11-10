@@ -1,5 +1,13 @@
 # B端 边缘节点对接协议 v1（MQTT）
 
+> **当前修订 r2（2026-11-10）**。线格式 `v` 仍为 `1`，本次全部是**向后兼容增量**：
+> 按 r1 对接的一方可原样运行，不实现新能力也不受影响。升级清单见 §12。
+>
+> | 修订 | 日期 | 变更 | 兼容性 |
+> |---|---|---|---|
+> | r1 | — | 初版 | — |
+> | r2 | 2026-11-10 | 新增 `featured.req/resp` 出厂歌单（§5.1）；`enqueue.req` 新增可选 `hint`（§6）；`caps` 新增 `featured`（§3）；中继收敛为单节点并引入 `TARGET_NODE`（§10.7） | 向后兼容；**建议**补 `hint` |
+
 对接对象：调度服务器 / 其他接入方。
 服务方：B端（Flutter 播放器）作为**边缘计算节点**——曲库检索、队列权威、播放状态都在 B端；
 服务器只通过 MQTT 请求与订阅，不保存曲库数据。
@@ -13,7 +21,7 @@
 | 曲库数据 | **B端 不公布任何曲库内容/索引**。搜索必须在 B端 上执行，结果只回给当次请求方 |
 | 队列 | 每个节点的队列只属于该节点，B端 是唯一权威；服务器看到的只是保留快照 |
 | 二维码 / 桌号 | 由接入方自己管理。B端 只接收并展示 `guest` 里的桌号字符串，不生成、不校验桌码 |
-| 控制权限 | 仅开放 `search` 与 `enqueue` 两种请求；**不提供暂停/切歌/音量等播放控制接口** |
+| 控制权限 | 仅开放 `search` / `enqueue` / `featured` 三种请求；**不提供暂停/切歌/音量等播放控制接口**。`featured` 只读，用于 C 端冷启动时填充默认歌单 |
 | 身份 | `nodeId` 由 B端 自动生成（设备标识哈希），**不由接入方分配、不可填写**；跨重装/升级不变，主题与全部消息都带 `nodeId` |
 
 ### 0.1 节点 ID
@@ -43,6 +51,8 @@
 | `{prefix}/{nodeId}/rpc/search.resp/{nonce}` | B端 → 服务器 | 1 | 否 | 检索应答 |
 | `{prefix}/{nodeId}/rpc/enqueue.req` | 服务器 → B端 | 1 | 否 | 入队请求 |
 | `{prefix}/{nodeId}/rpc/enqueue.resp/{nonce}` | B端 → 服务器 | 1 | 否 | 入队应答 |
+| `{prefix}/{nodeId}/rpc/featured.req` | 服务器 → B端 | 1 | 否 | 出厂歌单请求 **【r2 新增】** |
+| `{prefix}/{nodeId}/rpc/featured.resp/{nonce}` | B端 → 服务器 | 1 | 否 | 出厂歌单应答 **【r2 新增】** |
 
 服务器发现节点：订阅 `{prefix}/+/health`，retained 消息立即给出全部在线节点；
 节点掉线由 `state:"offline"` 的 retained `health` 通知（正常退出由 B端 主动补发，异常断链由遗嘱发布），无需额外的在线主题。
@@ -83,7 +93,7 @@ RPC 与事件共用同一信封，`v` 为协议版本：
   "playing": true,
   "library": { "count": 5000, "scanning": true, "scanned": 1240, "broken": 2 },
   "load": { "searchServed": 128, "searchAvgMs": 7, "enqueueServed": 31 },
-  "caps": ["search", "enqueue", "snapshot", "events"],
+  "caps": ["search", "featured", "enqueue", "snapshot", "events"],
   "app": { "name": "b-player", "version": "0.1.0" }
 }
 ```
@@ -94,7 +104,7 @@ RPC 与事件共用同一信封，`v` 为协议版本：
 | `queueDepth` | 队列长度；服务器可据此做负载/排队策略 |
 | `library.count` / `scanning` / `scanned` / `broken` | 曲库就绪度，仅在 B端 本地产生，不含任何曲目内容 |
 | `load.*` | 本进程自启动以来的计数与平均耗时 |
-| `caps` | 能力声明；服务器不得假设未声明能力存在。**动态**：`search` 只在节点能给出「点了就能播」的结果时才声明（本机有索引，或在线音源已可取链）。音源脚本被清空后节点会撤下 `search` 并重发 health，接入方应据此关闭搜索入口而不是让顾客搜出一支点不响的歌 |
+| `caps` | 能力声明；服务器不得假设未声明能力存在。**动态**：`search` 只在节点能给出「点了就能播」的结果时才声明（本机有索引，或在线音源已可取链）。音源脚本被清空后节点会撤下 `search` 并重发 health，接入方应据此关闭搜索入口而不是让顾客搜出一支点不响的歌。`featured`（**【r2 新增】**，与 `search` 同一门控）旧节点不会声明，不声明就别发 `featured.req` |
 
 **注意**：健康消息里没有、也不允许出现任何曲名/歌手/`trackKey`。服务器若需要搜索，
 只能发 RPC 给节点，由节点在自己的曲库里算。
@@ -217,6 +227,37 @@ RPC 与事件共用同一信封，`v` 为协议版本：
 入队必须发给场所绑定节点，规则见 §10.3。若接入方**跨节点聚合检索**，必须逐条标注来源节点
 （`originNode`），聚合与去重规则见 §10.2；聚合结果不能替代入队节点。
 
+### 5.1 出厂歌单 RPC【r2 新增】
+
+C 端冷启动时页面只有一个搜索框会显得空。节点可自带一份「本店常点」歌单：种子是节点本地
+资产（只有歌名/歌手/时长，不含音频），节点启动后自行检索解析成真正的曲目并缓存。
+
+请求 `{prefix}/{nodeId}/rpc/featured.req`，`payload` 为空对象：
+
+```json
+{ "v": 1, "type": "featured.req", "node": "nd-3f1a9c02b7d84e51", "ts": 1762104000123, "nonce": "3b8e01da",
+  "payload": {} }
+```
+
+应答 `{prefix}/{nodeId}/rpc/featured.resp/{nonce}`：
+
+```json
+{ "v": 1, "type": "featured.resp", "node": "nd-3f1a9c02b7d84e51", "ts": 1762104000190, "nonce": "3b8e01da",
+  "payload": {
+    "ok": true, "ready": true, "resolved": 38, "failed": 2, "seed": 40,
+    "items": [
+      { "trackKey": "lx:361f3ace135e", "title": "如愿", "artist": "王菲", "durationMs": 265000, "source": "lx" }
+    ]
+  } }
+```
+
+- `ready: false` 表示节点还在检索解析，`items` 可能只有一部分；接入方可以先渲染已有的，
+  稍后再取一次，不要因为暂时为空就判定不可用。
+- `items` 与 §5 的 `items` 同构，可直接复用检索的渲染与入队逻辑。
+- 前置条件同检索：先读 `health.caps`，没声明 `featured` 就别发——旧节点不认识这个主题，
+  发了只会等到超时。
+- 这里的 `trackKey` 由本节点生成并已在曲库注册，**可直接 `enqueue`**；同样不要跨节点复用。
+
 ## 6. 入队 RPC
 
 请求 `{prefix}/{nodeId}/rpc/enqueue.req`：
@@ -226,7 +267,8 @@ RPC 与事件共用同一信封，`v` 为协议版本：
   "payload": {
     "trackKey": "local:00001",
     "requestId": "t-20261103-0001",
-    "guest": { "seat": "12", "tag": "guest-7f3a" }
+    "guest": { "seat": "12", "tag": "guest-7f3a" },
+    "hint": { "title": "晴天", "artist": "周杰伦", "durationMs": 269000 }
   } }
 ```
 
@@ -234,6 +276,10 @@ RPC 与事件共用同一信封，`v` 为协议版本：
   （拒绝结果同样缓存）。只有已处理的请求才入缓存；`STALE_REQUEST`/`RATE_LIMITED`/`BAD_REQUEST`
   不消耗 `requestId`，修正后可立即重试。重试规则见 §11.2、§11.3。
 - `guest.tag`：可选，用于限流归属；`guest.seat`：原样展示到队列。
+- `hint`：**【r2 新增，可选】** 曲目提示。在线曲目的元数据只缓存在 B端 内存里，B端 重启后
+  旧的 `trackKey` 会失效。带上 `hint` 后，B端 在该 key 查不到时会用歌名/歌手在本机重新检索、
+  匹配出本地有效的一条再入队；映射失败仍返回 `TRACK_NOT_FOUND`。**不带时行为与 r1 完全一致。**
+  建议总是带上，它同时是「节点重启后顾客仍在旧页面点歌」的自愈路径。
 - **入队目标节点**：必须是场所绑定节点，且 `trackKey` 在该节点有效。检索结果的来源节点不能替代入队节点；
   跨节点检索结果何时可直接入队见 §10.3。
 - 是否接受由 B端 决定（容量、限流、曲目存在性）。
@@ -282,8 +328,8 @@ RPC 与事件共用同一信封，`v` 为协议版本：
 
 | 角色 | 可发布 | 可订阅 |
 |---|---|---|
-| B端（每节点一套凭据） | `{prefix}/{nodeId}/health`、`/queue`、`/lyric`、`/events`、`/rpc/search.resp/+`、`/rpc/enqueue.resp/+` | `{prefix}/{nodeId}/rpc/search.req`、`/rpc/enqueue.req` |
-| 服务器 | `{prefix}/+/rpc/search.req`、`/rpc/enqueue.req` | `{prefix}/+/health`、`/queue`、`/lyric`、`/events`、`/rpc/search.resp/+`、`/rpc/enqueue.resp/+` |
+| B端（每节点一套凭据） | `{prefix}/{nodeId}/health`、`/queue`、`/lyric`、`/events`、`/rpc/search.resp/+`、`/rpc/enqueue.resp/+`、`/rpc/featured.resp/+` | `{prefix}/{nodeId}/rpc/search.req`、`/rpc/enqueue.req`、`/rpc/featured.req` |
+| 服务器 | `{prefix}/+/rpc/search.req`、`/rpc/enqueue.req`、`/rpc/featured.req` | `{prefix}/+/health`、`/queue`、`/lyric`、`/events`、`/rpc/search.resp/+`、`/rpc/enqueue.resp/+`、`/rpc/featured.resp/+` |
 
 - 第一版只校验「能连上 broker + 能收发本节点主题」，不做应用层签名；
   若需要防重放，在 `requestId` 上加接入方自己的签名即可，B端 按 `requestId` 幂等。
@@ -301,6 +347,10 @@ RPC 与事件共用同一信封，`v` 为协议版本：
 ## 10. 请求路由（按请求类型分流）
 
 本节是第一优先级：先判断请求是否需要场所绑定，再决定路由。
+
+> **实现范围**：当前版本是**单节点**架构——一个中继固定服务一台权威节点，不提供跨节点检索、
+> 扇出聚合与跨节点队列迁移。下面的 10.2 多节点模式仅作语义定义，未实现；接入方不要把检索结果
+> 拿到另一台节点入队。
 
 ### 10.1 两类请求
 
@@ -336,6 +386,7 @@ RPC 与事件共用同一信封，`v` 为协议版本：
   `trackKey` 再入队；映射失败返回 `TRACK_NOT_FOUND`，不要转发到 `originNode`。
 - 在线曲目（`lx:` 前缀）：`trackKey` 由 `platform:songId` 决定，跨节点相同；但播放解析依赖节点本地的
   在线曲目元数据缓存。场所节点没检索过这首时可能解析失败，因此入队前应在场所节点完成一次检索（v1 约束）。
+  **r2 起**：在 `enqueue.req` 里带上 `hint`（§6），这一步由 B端 自动完成，接入方无需自己先检索一次。
 - 队列、歌词、播放状态同属有状态读取，一律读场所节点的 retained 消息。
 
 ### 10.4 场所绑定
@@ -350,6 +401,10 @@ RPC 与事件共用同一信封，`v` 为协议版本：
 | 未绑定 | 返回 `NODE_NOT_BOUND`，不要回退到任意在线节点 |
 
 `NODE_NOT_BOUND` 是**服务层**错误码，由接入方 API 返回，B端 不会返回它。
+
+**v1 落地方式**：部署者用 `TARGET_NODE` 把中继锚定到本店权威节点，等价于「一店一 relay 一节点」。
+未配置时中继退化为「只有一台在线节点」或 `health` 最新——后者会让检索与入队落到不同节点，
+仅用于兼容旧部署，多节点共存时必须显式配置。绑定表与 `venue` 参数留到多店共用中继时再引入。
 
 ### 10.5 一致性与展示
 
@@ -369,13 +424,14 @@ RPC 与事件共用同一信封，`v` 为协议版本：
 
 ### 10.7 参考实现现状（必须知道的差距）
 
-- `relay/server.js` 的 `selectNode()` 目前用同一套逻辑处理 search、enqueue 和状态读取，且取「最新健康的在线节点」，
-  等于把有状态请求也做了全局漂移。
-- 单场所单节点时可用；多场所上线前必须按 §10.1 分流：search 可保持全局（或扇出），
-  enqueue/queue/state 必须查场所绑定表。
-- 协议层无需改动：信封里的 `node` 字段已经支持显式指定节点。
+- **单节点（r2 起）**：`relay/server.js` 的 `pickNode()` 选定一台节点后固定使用，不再按 `health`
+  最新漂移——`nodeId` 由设备派生、跨重启稳定，节点重连后仍是同一台。配了 `TARGET_NODE` 则只认它，
+  离线时直接报错而不回退（回退等于把歌点进别家店）。
+- 多台节点同时在线属配置错误：只使用第一台并告警，其余不接收入队。
+- **不实现**跨节点检索、扇出聚合与跨节点队列迁移；§10.2 的模式 B/C 仅作语义定义。
 - 已落地的能力门控：`relay` 在 `/api/search` 前检查所选节点 `health.caps` 是否含 `search`，
   没有则回 `503 SEARCH_DISABLED`（中继侧错误码，B端 不返回它）；`caps` 字段缺失按旧节点处理，不拦。
+  `/api/featured` 同理检查 `featured`，缺失回 `503 FEATURED_DISABLED`。
   C端 按 `error` 码优先出文案，`SOURCE_UNAVAILABLE`/`SEARCH_DISABLED` 用 B端/中继给的 `message`。
 
 ## 11. 请求执行策略（超时、重试、限流、同步）
@@ -444,3 +500,51 @@ RPC 与事件共用同一信封，`v` 为协议版本：
   不要用本地提交顺序推算。
 - 检索与状态轮询可以并行；同一用户的连续点歌应串行提交，等上一单有结果再发下一单。
 - 队列满（200）时 B端 拒绝新入队，不自动扩队；接入方应在 UI 上提示而不是无限重试。
+
+## 12. 从 r1 升级到 r2（对接方检查清单）
+
+### 12.1 结论
+
+**不改也能跑。** r2 全部是向后兼容增量：线格式 `v` 仍是 `1`，新主题与新字段都是可选的。
+下面按收益排序，做多少取决于你要不要新能力。
+
+### 12.2 三项改动
+
+| 优先级 | 改什么 | 章节 | 收益 | 不改的后果 |
+|---|---|---|---|---|
+| **建议** | 入队带 `hint` | §6 | 节点重启/换机后旧 `trackKey` 失效时，B端 按歌名自愈 | 顾客停留在旧页面点歌会拿到 `TRACK_NOT_FOUND` |
+| 可选 | 订阅 `featured.req`，C 端展示 8–10 首 | §5.1 | 冷启动页面不再只有一个搜索框 | 无影响，只是少一块填充 |
+| 部署 | 中继设置 `TARGET_NODE`（有多台节点时） | §10.7 | 明确权威机，彻底杜绝漂移 | 未配时自动固定第一台在线节点；多台同时在线会告警 |
+
+### 12.3 最小改动：加一组字段
+
+`enqueue.req` 的 `payload` 里补 `hint`，其余一个字节都不用动：
+
+```json
+{
+  "trackKey": "lx:361f3ace135e",
+  "requestId": "t-20261103-0001",
+  "guest": { "seat": "12", "tag": "guest-7f3a" },
+  "hint": { "title": "如愿", "artist": "王菲", "durationMs": 265000 }
+}
+```
+
+- `title` 必填且非空，否则整个 `hint` 被忽略（不报错，退回 r1 行为）。
+- `artist`、`durationMs` 可选；`durationMs` 用于排除翻唱/现场版（偏差 > 20s 直接放弃匹配）。
+- 只有 B端 找不到该 `trackKey` 时才会触发检索，正常点歌没有额外开销。
+
+### 12.4 如果要接出厂歌单
+
+1. 读 `health.caps`，含 `featured` 才继续（r1 节点不会声明）。
+2. 发 `featured.req`，`payload` 为空对象 `{}`。
+3. 应答 `payload.items` 与 §5 的检索结果**同构**，可直接复用渲染与入队逻辑。
+4. `ready:false` 表示 B端 仍在检索解析，`items` 可能只有一部分——先渲染已有的，过几秒再取一次；
+   不要因为暂时为空就永久关闭该入口。
+5. 歌单曲目的 `trackKey` 由该节点生成且已注册曲库，可直接 `enqueue`；不要把它用到另一台节点上。
+
+### 12.5 不需要改的地方
+
+- `v` 字段、通用信封（§2）、`health`/`queue`/`lyric`/`events` 的结构与字段全部不变。
+- `search` 的请求与应答不变。
+- §7 错误码表无新增。新增的中继侧码 `FEATURED_DISABLED` 与已有 `SEARCH_DISABLED` 同级，
+  仅由中继返回，B端 不会返回。

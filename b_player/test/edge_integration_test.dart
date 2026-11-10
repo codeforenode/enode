@@ -39,6 +39,7 @@ void main() {
         'offsetMs': 0,
         'text': '[00:00.00]测试歌词 - 测试歌手\n[00:08.00]第二行',
       },
+      featured: () => {'ready': true, 'resolved': 0, 'seed': 0, 'items': const []},
       config: const MqttConfig(host: host, port: port),
     );
     addTearDown(node.dispose);

@@ -21,10 +21,12 @@ const NODE_ID = '[A-Za-z0-9_-]{1,64}';
 const healthRe = new RegExp(`^${escapeRe(PREFIX)}/(${NODE_ID})/health$`);
 const queueRe = new RegExp(`^${escapeRe(PREFIX)}/(${NODE_ID})/queue$`);
 const eventsRe = new RegExp(`^${escapeRe(PREFIX)}/(${NODE_ID})/events$`);
-const respRe = new RegExp(`^${escapeRe(PREFIX)}/(${NODE_ID})/rpc/(search|enqueue)\\.resp/([A-Za-z0-9_-]{1,64})$`);
+const respRe = new RegExp(`^${escapeRe(PREFIX)}/(${NODE_ID})/rpc/(search|enqueue|featured)\\.resp/([A-Za-z0-9_-]{1,64})$`);
 
 const NODE_FRESH_MS = 35000;
 const NODE_TTL_MS = 10 * 60 * 1000;
+// 歌单是解析好就基本不变的运营数据，60s 内直接复用，别让每次刷新页面都打一轮 RPC。
+const FEATURED_TTL_MS = 60 * 1000;
 
 /** @type {Map<string, {id: string, health: any, healthAt: number, snapshot: any, snapshotAt: number, anchor: any}>} */
 const nodes = new Map();
@@ -32,6 +34,8 @@ const nodes = new Map();
 const pending = new Map();
 /** @type {Map<string, number[]>} */
 const rateHits = new Map();
+/** @type {Map<string, {at: number, body: any}>} 只缓存已就绪的结果，解析中每次都要问到最新进度 */
+const featuredCache = new Map();
 
 let client = null;
 let mqttConnected = false;
@@ -172,14 +176,52 @@ function estimatePosition(n, now) {
   return dur > 0 ? Math.min(pos, dur) : pos;
 }
 
-function selectNode(now = Date.now()) {
-  let best = null;
-  for (const n of nodes.values()) {
-    if (!n.health || n.health.state !== 'online') continue;
-    if (now - n.healthAt > NODE_FRESH_MS) continue;
-    if (!best || n.healthAt > best.healthAt) best = n;
+function isFresh(node, now) {
+  return Boolean(node.health) && node.health.state === 'online' && now - node.healthAt <= NODE_FRESH_MS;
+}
+
+/** 多台节点同时在线时的告警节流，避免每 2s 的轮询把日志刷满。 */
+let lastMultiNodeWarn = 0;
+function warnMultiNode(count, chosen) {
+  const now = Date.now();
+  if (now - lastMultiNodeWarn < 60000) return;
+  lastMultiNodeWarn = now;
+  console.warn(
+    `[relay] 检测到 ${count} 台节点在线，v1 只支持单节点：已固定使用 ${chosen}，` +
+      `其余 ${count - 1} 台不会接收入队。请让小店只保留一台权威节点，或设置 TARGET_NODE`,
+  );
+}
+
+/** 一旦选定就固定下来，只有它离线才重选；不按 health 最新漂移。 */
+let activeNodeId = null;
+
+/**
+ * 本中继的权威节点（单节点）。
+ *
+ * 之前每次调用都按 health 最新重选，而 search / featured / enqueue / state 是四次独立请求——
+ * 几秒间隔里 10s 一次的 health 心跳就能把它换一台：点歌 404（新节点不认识那个 trackKey），
+ * 或者把歌点进另一家店的队列。所以这里选定即固定：
+ *
+ * 1. 配了 TARGET_NODE 就只认它；它离线时返回 null，**不回退**
+ * 2. 没配则取第一台在线节点并记住。nodeId 由设备派生、跨重启不变，节点重连后照旧命中
+ * 3. 记住的节点离线才重新选，多台在线时告警——单节点架构下那属于配置错误
+ */
+function pickNode(now = Date.now()) {
+  const pinned = cfg.node.target || activeNodeId;
+  if (pinned) {
+    const node = nodes.get(pinned);
+    if (node && isFresh(node, now)) return node;
+    // 显式配置的节点离线时宁可报错，也不要把歌点进别的店
+    if (cfg.node.target) return null;
+    activeNodeId = null;
   }
-  return best;
+
+  const online = [...nodes.values()].filter((n) => isFresh(n, now));
+  if (online.length === 0) return null;
+  const chosen = online[0];
+  activeNodeId = chosen.id;
+  if (online.length > 1) warnMultiNode(online.length, chosen.id);
+  return chosen;
 }
 
 function settleRpc(nodeId, nonce, text) {
@@ -227,13 +269,13 @@ function rpc(node, kind, payload) {
 
 // ---------------- HTTP API ----------------
 
-function apiState() {
+function apiState(url, req) {
   const now = Date.now();
   const base = {
     serverTime: now,
     relay: mqttConnected ? 'online' : 'offline',
   };
-  const node = selectNode(now);
+  const node = pickNode(now);
   if (!node) {
     return { ...base, online: false, node: null, playing: false, player: null, queue: [], queueDepth: 0, updatedAt: 0 };
   }
@@ -312,7 +354,23 @@ async function apiEnqueue(req, body) {
   const guest = {};
   if (seat) guest.seat = seat;
   guest.tag = who;
-  const payload = await rpc(node, 'enqueue', { trackKey, requestId, guest });
+  // 曲目提示只用于「本机没检索过这首」时的兜底映射（协议 §10.3），
+  // 旧节点会忽略这个字段，行为不变。
+  const hint = {};
+  const title = typeof body.title === 'string' ? body.title.trim().slice(0, 128) : '';
+  if (title) {
+    hint.title = title;
+    const artist = typeof body.artist === 'string' ? body.artist.trim().slice(0, 128) : '';
+    if (artist) hint.artist = artist;
+    const durationMs = Number(body.durationMs);
+    if (Number.isFinite(durationMs) && durationMs > 0) hint.durationMs = Math.trunc(durationMs);
+  }
+  const payload = await rpc(node, 'enqueue', {
+    trackKey,
+    requestId,
+    guest,
+    ...(hint.title ? { hint } : {}),
+  });
   if (!payload.ok) throw fromPayload(payload);
   return {
     node: node.id,
@@ -322,9 +380,52 @@ async function apiEnqueue(req, body) {
   };
 }
 
+/**
+ * 出厂歌单：只读、无状态，可跨节点取。
+ *
+ * 曲目里的 trackKey 由节点检索生成，这里原样透传——H5 不解析它，只回传点歌。
+ * 节点还没解析完时 ready 为 false，items 可能只有一部分，C 端可以边等边渲染。
+ */
+async function apiFeatured(req) {
+  const ip = req.socket.remoteAddress || 'unknown';
+  if (!allowRate('fip:' + ip, cfg.limits.featuredPerMinutePerIp)) {
+    throw httpError(429, 'RATE_LIMITED', '请求太频繁，稍后再试');
+  }
+  // 必须和 enqueue 落在同一个节点，否则歌单里的 trackKey 在入队节点上不存在。
+  const node = requireNode();
+  // 旧节点不认识 featured.req，声明里没有这个能力就别打过去等超时。
+  const caps = node.health && node.health.caps;
+  if (Array.isArray(caps) && !caps.includes('featured')) {
+    throw httpError(503, 'FEATURED_DISABLED', '本店暂未配置推荐歌单');
+  }
+
+  const now = Date.now();
+  const cached = featuredCache.get(node.id);
+  if (cached && cached.body.ready && now - cached.at < FEATURED_TTL_MS) return cached.body;
+
+  const payload = await rpc(node, 'featured', {});
+  if (!payload.ok) throw fromPayload(payload);
+  const body = {
+    node: node.id,
+    ready: payload.ready === true,
+    resolved: typeof payload.resolved === 'number' ? payload.resolved : 0,
+    failed: typeof payload.failed === 'number' ? payload.failed : 0,
+    total: typeof payload.seed === 'number' ? payload.seed : 0,
+    items: Array.isArray(payload.items) ? payload.items : [],
+  };
+  if (body.ready) featuredCache.set(node.id, { at: now, body });
+  return body;
+}
+
 function requireNode() {
-  const node = selectNode();
-  if (!node) throw httpError(503, 'NODE_OFFLINE', '点歌机不在线');
+  const node = pickNode();
+  if (!node) {
+    throw httpError(
+      503,
+      'NODE_OFFLINE',
+      cfg.node.target ? '绑定的点歌机不在线' : '点歌机不在线',
+    );
+  }
   return node;
 }
 
@@ -443,7 +544,7 @@ async function handle(req, res) {
   if (pathname.startsWith('/api/')) {
     try {
       if (pathname === '/api/state' && req.method === 'GET') {
-        return sendJson(res, 200, apiState());
+        return sendJson(res, 200, apiState(url, req));
       }
       if (pathname === '/api/search' && req.method === 'GET') {
         return sendJson(res, 200, await apiSearch(url, req));
@@ -451,6 +552,9 @@ async function handle(req, res) {
       if (pathname === '/api/enqueue' && req.method === 'POST') {
         const body = await readJson(req);
         return sendJson(res, 200, await apiEnqueue(req, body));
+      }
+      if (pathname === '/api/featured' && req.method === 'GET') {
+        return sendJson(res, 200, await apiFeatured(req));
       }
       return sendJson(res, 404, { error: 'NOT_FOUND', message: '接口不存在' });
     } catch (err) {

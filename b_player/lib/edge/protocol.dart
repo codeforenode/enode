@@ -12,6 +12,8 @@ const String tSearchReq = 'search.req';
 const String tSearchResp = 'search.resp';
 const String tEnqueueReq = 'enqueue.req';
 const String tEnqueueResp = 'enqueue.resp';
+const String tFeaturedReq = 'featured.req';
+const String tFeaturedResp = 'featured.resp';
 
 const String eQueueUpdate = 'queue.update';
 const String ePlayerTrack = 'player.track';
@@ -34,6 +36,10 @@ const String errInternal = 'INTERNAL';
 
 const List<String> capsV1 = ['search', 'enqueue', 'snapshot', 'events'];
 
+/// 出厂歌单能力。**不能**并进 [capsV1]：旧节点不认识 featured.req，
+/// 声明了只会让中继把请求打过去然后超时，不如让 C 端直接隐藏歌单。
+const String capFeatured = 'featured';
+
 final RegExp _nodeRe = RegExp(r'^[A-Za-z0-9_-]{1,64}$');
 
 /// 节点 ID 由 B端 自动生成，外部只做格式校验，不参与分配。
@@ -47,8 +53,10 @@ String lyricTopic(String prefix, String node) => '$prefix/$node/lyric';
 String eventsTopic(String prefix, String node) => '$prefix/$node/events';
 String searchReqTopic(String prefix, String node) => '$prefix/$node/rpc/search.req';
 String enqueueReqTopic(String prefix, String node) => '$prefix/$node/rpc/enqueue.req';
+String featuredReqTopic(String prefix, String node) => '$prefix/$node/rpc/featured.req';
 String searchRespTopic(String prefix, String node, String nonce) => '$prefix/$node/rpc/search.resp/$nonce';
 String enqueueRespTopic(String prefix, String node, String nonce) => '$prefix/$node/rpc/enqueue.resp/$nonce';
+String featuredRespTopic(String prefix, String node, String nonce) => '$prefix/$node/rpc/featured.resp/$nonce';
 
 class EdgeEnvelope {
   const EdgeEnvelope({
@@ -103,8 +111,10 @@ class SearchRequest {
     if (q is! String || q.trim().isEmpty || q.runes.length > 64) {
       throw const FormatException('q 必须为 1–64 字符');
     }
-    final offset = (p['offset'] as num?)?.toInt() ?? 0;
-    final limit = (p['limit'] as num?)?.toInt() ?? 20;
+    final rawOffset = p['offset'];
+    final rawLimit = p['limit'];
+    final offset = rawOffset is num ? rawOffset.toInt() : 0;
+    final limit = rawLimit is num ? rawLimit.toInt() : 20;
     if (offset < 0 || offset > 1000) throw const FormatException('offset 越界');
     if (limit < 1 || limit > 50) throw const FormatException('limit 越界');
     return SearchRequest(q: q, offset: offset, limit: limit);
@@ -132,6 +142,34 @@ class SearchHit {
       };
 }
 
+/// 入队时的曲目提示：本机已经不认识这个 `trackKey`（节点重启过、页面开了很久）时，
+/// 用它在本机重新检索、映射出本地有效的 `trackKey`（协议 §10.3）。
+/// 旧节点忽略这个字段，行为不变。
+class EnqueueHint {
+  const EnqueueHint({required this.title, this.artist = '', this.durationMs = 0});
+
+  final String title;
+  final String artist;
+  final int durationMs;
+
+  static EnqueueHint? fromPayload(Object? raw) {
+    if (raw is! Map) return null;
+    final title = raw['title'];
+    if (title is! String) return null;
+    final trimmed = title.trim();
+    if (trimmed.isEmpty || trimmed.runes.length > 128) return null;
+    final artist = raw['artist'];
+    // 来自 HTTP body 的字段一律不可信：用 is 判断而不是 as 转换，
+    // 否则 "265000" 这类字符串会抛 TypeError，把整次入队变成 INTERNAL。
+    final duration = raw['durationMs'];
+    return EnqueueHint(
+      title: trimmed,
+      artist: artist is String ? artist.trim() : '',
+      durationMs: duration is num ? duration.toInt() : 0,
+    );
+  }
+}
+
 class EnqueueRequest {
   const EnqueueRequest({
     required this.trackKey,
@@ -139,6 +177,7 @@ class EnqueueRequest {
     this.seat,
     this.tag,
     this.ts = 0,
+    this.hint,
   });
 
   final String trackKey;
@@ -146,6 +185,7 @@ class EnqueueRequest {
   final String? seat;
   final String? tag;
   final int ts;
+  final EnqueueHint? hint;
 
   static EnqueueRequest fromPayload(Map<String, Object?> p, {int envelopeTs = 0}) {
     final trackKey = p['trackKey'];
@@ -170,6 +210,7 @@ class EnqueueRequest {
       seat: optString(guestMap['seat']),
       tag: optString(guestMap['tag']),
       ts: envelopeTs,
+      hint: EnqueueHint.fromPayload(p['hint']),
     );
   }
 }

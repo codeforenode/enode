@@ -11,7 +11,18 @@
     seat: '',
     clientId: '',
     polling: false,
+    featuredItems: [],
+    featuredOffset: 0,
   };
+
+  // 「已点」判定：本地刚点过的 + 队列里已有的，两者并集。
+  const pickedKeys = new Set();
+  const queueKeys = new Set();
+  let lastQueueSig = '';
+  let featuredLoading = false;
+  let featuredDone = false;
+  let featuredAttempts = 0;
+  let featuredTimer = null;
 
   // ---------------- 工具 ----------------
 
@@ -151,6 +162,14 @@
     list.replaceChildren();
     $('queueCount').textContent = queue.length ? String(queue.length) : '';
     $('queueEmpty').classList.toggle('hidden', queue.length > 0);
+
+    queueKeys.clear();
+    for (const item of queue) {
+      if (item && typeof item.trackKey === 'string') queueKeys.add(item.trackKey);
+    }
+    // 队列快照已经回来了，「已点」就交还给队列判断，播完后该行可以再点一次。
+    for (const key of [...pickedKeys]) if (queueKeys.has(key)) pickedKeys.delete(key);
+
     queue.forEach((item, index) => {
       const li = document.createElement('li');
       if (state.seat && item.guest && item.guest.seat === state.seat) li.classList.add('mine');
@@ -164,6 +183,13 @@
       li.append(meta);
       list.append(li);
     });
+
+    // 只在队列集合真的变了才重绘歌单，避免每 2s 把用户正要点的按钮换掉。
+    const sig = [...queueKeys].sort().join('|');
+    if (sig !== lastQueueSig) {
+      lastQueueSig = sig;
+      if (state.featuredItems.length) renderFeatured();
+    }
   }
 
   function applyState(s) {
@@ -199,6 +225,84 @@
     }
   }
 
+  // ---------------- 出厂歌单 ----------------
+
+  // 首屏一次给 8 条：一屏能扫完，又不至于把「等待队列」挤出视线。
+  const FEATURED_PAGE = 8;
+
+  function renderFeatured() {
+    const card = $('featuredCard');
+    const all = state.featuredItems;
+    if (!all.length) {
+      card.classList.add('hidden');
+      return;
+    }
+    card.classList.remove('hidden');
+    $('featuredMore').classList.toggle('hidden', all.length <= FEATURED_PAGE);
+
+    const list = $('featuredList');
+    list.replaceChildren();
+    const size = Math.min(FEATURED_PAGE, all.length);
+    const start = state.featuredOffset % all.length;
+    for (let i = 0; i < size; i++) {
+      const item = all[(start + i) % all.length];
+      const li = document.createElement('li');
+      const meta = el('div', 'row-meta');
+      meta.append(el('div', 'row-title', item.title || '未知曲目'));
+      const sub = [];
+      if (item.artist) sub.push(item.artist);
+      if (item.durationMs) sub.push(fmt(item.durationMs));
+      meta.append(el('div', 'row-sub', sub.join(' · ')));
+
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'pick';
+      const inQueue = queueKeys.has(item.trackKey);
+      const justPicked = pickedKeys.has(item.trackKey);
+      btn.textContent = inQueue ? '队列中' : justPicked ? '已点' : '点歌';
+      btn.disabled = inQueue || justPicked;
+      if (!btn.disabled) {
+        btn.addEventListener('click', () => enqueue(item, btn));
+      }
+      li.append(meta, btn);
+      list.append(li);
+    }
+  }
+
+  function nextFeaturedBatch() {
+    const all = state.featuredItems;
+    if (all.length <= FEATURED_PAGE) return;
+    state.featuredOffset = (state.featuredOffset + FEATURED_PAGE) % all.length;
+    renderFeatured();
+  }
+
+  // 歌单由节点检索解析而来，没就绪就过一会儿再问；最多试几轮，避免离线时空转。
+  async function loadFeatured() {
+    if (featuredLoading || featuredDone) return;
+    featuredLoading = true;
+    featuredAttempts += 1;
+    try {
+      const data = await api('/api/featured');
+      const items = Array.isArray(data.items) ? data.items : [];
+      if (items.length) {
+        state.featuredItems = items;
+        renderFeatured();
+      }
+      if (data.ready === true) {
+        featuredDone = true;
+        return;
+      }
+    } catch {
+      // 拿不到就安静地不显示，歌单只是填充，不该抢搜索的主路径。
+    } finally {
+      featuredLoading = false;
+      if (!featuredDone && featuredAttempts < 6) {
+        clearTimeout(featuredTimer);
+        featuredTimer = setTimeout(loadFeatured, 10000);
+      }
+    }
+  }
+
   function renderResults(data) {
     const list = $('results');
     list.replaceChildren();
@@ -221,7 +325,7 @@
       btn.type = 'button';
       btn.className = 'pick';
       btn.textContent = '点歌';
-      btn.addEventListener('click', () => enqueue(item.trackKey, item.title, btn));
+      btn.addEventListener('click', () => enqueue(item, btn));
       li.append(meta, btn);
       list.append(li);
     }
@@ -252,9 +356,11 @@
     }
   }
 
-  async function enqueue(trackKey, title, btn) {
+  async function enqueue(track, btn) {
+    const trackKey = track.trackKey;
+    const title = track.title || '未知曲目';
     if (!state.seat) {
-      askSeat(() => enqueue(trackKey, title, null));
+      askSeat(() => enqueue(track, null));
       return;
     }
     if (btn) {
@@ -269,10 +375,16 @@
           trackKey,
           seat: state.seat,
           clientId: state.clientId,
+          // 节点重启后在线曲目缓存会清空，这三项让节点能按歌名重新映射出有效的 trackKey。
+          title,
+          artist: track.artist || '',
+          durationMs: Number(track.durationMs) || 0,
         }),
       });
       const pos = Number(result.queuePosition);
       toast(pos > 0 ? `已点《${title}》 · 第 ${pos} 位` : `已点《${title}》`);
+      pickedKeys.add(trackKey);
+      if (state.featuredItems.length) renderFeatured();
       poll();
     } catch (err) {
       toast(messageFor(err), true);
@@ -329,6 +441,7 @@
     });
 
     $('searchBtn').addEventListener('click', doSearch);
+    $('featuredMore').addEventListener('click', nextFeaturedBatch);
     $('q').addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
         event.preventDefault();
@@ -345,6 +458,7 @@
     poll();
     setInterval(poll, 2000);
     setInterval(renderProgress, 250);
+    loadFeatured();
   }
 
   boot();
