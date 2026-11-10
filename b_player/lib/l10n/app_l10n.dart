@@ -345,6 +345,84 @@ abstract class AppL10n {
   /// **'原始碼位址已複製'**
   String get aboutSourceCopied;
 
+  /// No description provided for @aboutUpdate.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'應用程式更新'**
+  String get aboutUpdate;
+
+  /// No description provided for @aboutUpdateIdle.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'未檢查'**
+  String get aboutUpdateIdle;
+
+  /// No description provided for @aboutCheckUpdate.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'檢查更新'**
+  String get aboutCheckUpdate;
+
+  /// No description provided for @aboutCheckingUpdate.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'正在檢查…'**
+  String get aboutCheckingUpdate;
+
+  /// No description provided for @aboutUpToDate.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'已是最新版本'**
+  String get aboutUpToDate;
+
+  /// No description provided for @aboutNoRelease.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'暫無發佈版本'**
+  String get aboutNoRelease;
+
+  /// No description provided for @aboutNewVersion.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'有新版本 {version}'**
+  String aboutNewVersion(String version);
+
+  /// No description provided for @aboutDownloadUpdate.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'下載新版本'**
+  String get aboutDownloadUpdate;
+
+  /// No description provided for @updateAvailableTitle.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'發現新版本 {version}'**
+  String updateAvailableTitle(String version);
+
+  /// No description provided for @updateAvailableBody.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'目前 {current}，要下載新版本嗎？'**
+  String updateAvailableBody(String current);
+
+  /// No description provided for @updateLater.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'稍後'**
+  String get updateLater;
+
+  /// No description provided for @updateDownload.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'前往下載'**
+  String get updateDownload;
+
+  /// No description provided for @openLinkFailed.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'無法開啟連結'**
+  String get openLinkFailed;
+
   /// No description provided for @settingsTooltip.
   ///
   /// In zh_Hant, this message translates to:

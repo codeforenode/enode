@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -9,12 +10,14 @@ import '../l10n/l10n.dart';
 import '../legal.dart';
 import '../state/app_settings.dart';
 import '../state/app_state.dart';
+import '../state/app_update.dart';
 import '../theme.dart';
 import 'form_bits.dart';
 import 'mqtt_panel.dart';
 import 'online_settings.dart';
 import 'screen_cast_panel.dart';
 import 'secret_tap.dart';
+import 'update_bits.dart';
 
 enum _Tab { display, broadcast, sources, cast, about }
 
@@ -24,6 +27,7 @@ Future<void> showSettings(
   BuildContext context, {
   required AppState state,
   required AppSettings settings,
+  AppUpdateController? updates,
   required bool onlineUnlocked,
   required VoidCallback onUnlockOnline,
 }) =>
@@ -35,6 +39,7 @@ Future<void> showSettings(
         pageBuilder: (_, _, _) => _SettingsPage(
           state: state,
           settings: settings,
+          updates: updates,
           onlineUnlocked: onlineUnlocked,
           onUnlockOnline: onUnlockOnline,
         ),
@@ -49,11 +54,13 @@ class _SettingsPage extends StatefulWidget {
   const _SettingsPage({
     required this.state,
     required this.settings,
+    required this.updates,
     required this.onlineUnlocked,
     required this.onUnlockOnline,
   });
   final AppState state;
   final AppSettings settings;
+  final AppUpdateController? updates;
   final bool onlineUnlocked;
   final VoidCallback onUnlockOnline;
 
@@ -218,7 +225,11 @@ class _SettingsPageState extends State<_SettingsPage> {
         _Tab.about => _scrolled(
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 560),
-              child: _About(state: widget.state, onOpenSources: _openSources),
+              child: _About(
+                state: widget.state,
+                updates: widget.updates,
+                onOpenSources: _openSources,
+              ),
             ),
           ),
       };
@@ -309,14 +320,25 @@ class _Display extends StatelessWidget {
 }
 
 class _About extends StatelessWidget {
-  const _About({required this.state, required this.onOpenSources});
+  const _About({required this.state, required this.updates, required this.onOpenSources});
   final AppState state;
+  final AppUpdateController? updates;
   final VoidCallback onOpenSources;
+
+  static String _updateText(AppL10n t, AppUpdateController u) => switch (u.status) {
+        AppUpdateStatus.idle => t.aboutUpdateIdle,
+        AppUpdateStatus.checking => t.aboutCheckingUpdate,
+        AppUpdateStatus.latest => t.aboutUpToDate,
+        AppUpdateStatus.available => t.aboutNewVersion(u.available!.tag),
+        AppUpdateStatus.noRelease => t.aboutNoRelease,
+        AppUpdateStatus.failed => t.updateCheckFailed(u.error ?? ''),
+      };
 
   @override
   Widget build(BuildContext context) {
     final edge = state.edge;
     final t = AppL10n.of(context);
+    final update = updates;
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -328,6 +350,35 @@ class _About extends StatelessWidget {
           onUnlock: onOpenSources,
           child: _Row(k: t.aboutVersion, v: 'v$appVersion'),
         ),
+        if (update != null)
+          ListenableBuilder(
+            listenable: update,
+            builder: (context, _) => Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _Row(
+                  k: t.aboutUpdate,
+                  v: _updateText(t, update),
+                  warn: update.status == AppUpdateStatus.failed,
+                ),
+                Row(children: [
+                  _link(
+                    icon: Icons.sync_rounded,
+                    label: t.aboutCheckUpdate,
+                    onTap: () => unawaited(update.check()),
+                  ),
+                  if (update.available != null) ...[
+                    const SizedBox(width: 16),
+                    _link(
+                      icon: Icons.download_rounded,
+                      label: t.aboutDownloadUpdate,
+                      onTap: () => unawaited(openAppLink(context, update.available!.downloadUrl)),
+                    ),
+                  ],
+                ]),
+              ],
+            ),
+          ),
         _Row(k: t.aboutNodeId, v: edge.nodeId.isEmpty ? t.notAssigned : edge.nodeId),
         _Row(
           k: t.aboutConnection,

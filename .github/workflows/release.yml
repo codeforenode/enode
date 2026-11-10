@@ -1,0 +1,152 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Analyze and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check tag matches pubspec
+        run: |
+          version=$(grep -E '^version:' b_player/pubspec.yaml | head -1 | sed 's/^version:[[:space:]]*//' | tr -d '\r')
+          name=${version%%+*}
+          if [ "v$name" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match pubspec version $version"
+            exit 1
+          fi
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.8'
+          channel: stable
+          cache: true
+
+      - name: Analyze
+        working-directory: b_player
+        run: |
+          flutter pub get
+          flutter analyze
+
+      - name: Test
+        working-directory: b_player
+        run: flutter test
+
+  windows:
+    name: Windows
+    needs: verify
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.8'
+          channel: stable
+          cache: true
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Build and package
+        working-directory: b_player
+        run: |
+          flutter pub get
+          powershell -NoProfile -ExecutionPolicy Bypass -File tool/package_windows.ps1 -Installer
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: b_player/dist/eNode-*-win-x64*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
+  android:
+    name: Android
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.8'
+          channel: stable
+          cache: true
+
+      - name: Restore signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "::error::ANDROID_KEYSTORE_B64 secret is not set; see README."
+            exit 1
+          fi
+          mkdir -p "$HOME/.android"
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$HOME/.android/debug.keystore"
+          chmod 600 "$HOME/.android/debug.keystore"
+
+      - name: Build APK
+        working-directory: b_player
+        run: |
+          flutter pub get
+          flutter build apk --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: b_player/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
+  release:
+    name: Publish
+    needs: [windows, android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Prepare assets
+        run: |
+          name="${GITHUB_REF_NAME#v}"
+          mv dist/app-release.apk "dist/eNode-${name}-android.apk"
+          {
+            echo "# eNode ${name}"
+            echo
+            echo "- Windows installer: eNode-${name}-win-x64-setup.exe"
+            echo "- Windows portable: eNode-${name}-win-x64.zip"
+            echo "- Android: eNode-${name}-android.apk"
+            echo
+            echo "License: [AGPL-3.0](https://github.com/${GITHUB_REPOSITORY}/blob/main/LICENSE)"
+          } > notes.md
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" \
+              --verify-tag --latest --title "eNode ${GITHUB_REF_NAME#v}" --notes-file notes.md
+          fi

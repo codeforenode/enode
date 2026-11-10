@@ -55,6 +55,27 @@ powershell -ExecutionPolicy Bypass -File tool\package_windows.ps1 -Installer
 flutter build apk --release     # -> build/app/outputs/flutter-apk/app-release.apk
 ```
 
+一键发布（GitHub Actions 构建，在仓库根目录；本机只需要 Git）：
+
+```powershell
+release.bat                     # 改版本 → 提交 → 推公开仓 → 打 tag
+release.bat -DryRun             # 只打印计划，不提交、不推送
+release.bat -Version 1.4.1+4    # 直接指定版本号
+```
+
+推送 `v<版本名>` 后，[`release`](.github/workflows/release.yml) 工作流会校验 tag 与 `pubspec.yaml`
+一致，在 Ubuntu 上跑 analyze/test 和 APK 构建，在 Windows 上安装 Inno Setup、构建便携包/安装包，
+最后自动发布 Release。Windows 构建会从 Spotify CDN 拉取固定版本 CEF，通常 20–30 分钟。
+
+Android release 包沿用现有调试证书签名；换证书会导致已安装设备无法覆盖升级。首次使用需在公开仓
+**Settings → Secrets and variables → Actions** 添加 `ANDROID_KEYSTORE_B64`，内容为本机证书的 Base64：
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("$env:USERPROFILE\.android\debug.keystore")) | Set-Clipboard
+```
+
+CI 会把它还原到 `~/.android/debug.keystore` 再构建。Actions 日志公开，不包含凭据。
+
 曲库索引持久化在应用支持目录；来源为本地目录与 WebDAV。WebDAV 通过递归 PROPFIND 扫描，
 跳过 `@eaDir`、回收站与点目录；凭据保存在本机 SharedPreferences，不拼 URL、不写日志。
 
@@ -75,6 +96,9 @@ TLS 连接设 `MQTT_TLS=1`。接口：`GET /api/state`、`GET /api/search?q=`、
 - 关闭主窗口只收进托盘，进程与 MQTT 连接继续运行；托盘左键唤回窗口，右键菜单为打开 / 开机启动 / 退出。
 - 开机启动写 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`（值名 `eNode`）；单实例用 `127.0.0.1:47621` 占位。
 - 版本号唯一来源是 `pubspec.yaml` 的 `version`：构建时写入 exe 属性，运行时由 `package_info_plus` 读回。
+- 应用内更新检查读取公开仓的 GitHub `releases/latest`（启动时静默一次，「关于」页可手动重查）。发布时 tag 用
+  `v<version>`；附件按平台命名，Windows 优先 `eNode-<ver>-win-x64-setup.exe`、便携包 `.zip` 兜底，Android 取 `.apk`，
+  没有匹配附件则打开 Release 页面。
 - 屏幕投放：一块 CEF canvas 承载全部屏幕构图，每个目标屏一个置顶、鼠标穿透的 presenter 窗；
   时间锚点只有一份，各窗按本地墙钟推进，主进程每秒纠偏。建窗串行，CEF 不可用时退回一屏一引擎，再退 Flutter 自绘。
 

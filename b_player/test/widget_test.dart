@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -13,6 +15,7 @@ import 'package:b_player/edge/sources/lx_online_source.dart';
 import 'package:b_player/main.dart';
 import 'package:b_player/state/app_settings.dart';
 import 'package:b_player/state/app_state.dart';
+import 'package:b_player/state/app_update.dart';
 import 'package:b_player/theme.dart';
 import 'package:b_player/ui/shell.dart';
 
@@ -318,5 +321,54 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     state2.dispose();
     settings2.dispose();
+  });
+
+  testWidgets('启动发现新版本提示一次，关于页保留状态和下载入口', (WidgetTester tester) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final state = AppState(mqtt: _testMqtt);
+    final settings = AppSettings();
+    final updates = AppUpdateController(
+      client: MockClient((request) async => http.Response(
+            jsonEncode({
+              'tag_name': 'v9.9.9',
+              'html_url': 'https://example.test/releases/v9.9.9',
+              'assets': const [],
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          )),
+      currentVersion: () => '1.4.0',
+    );
+
+    await tester.pumpWidget(localizedApp(
+      theme: buildTheme(Brightness.dark),
+      home: Shell(state: state, settings: settings, updates: updates),
+    ));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text(l10n.updateAvailableTitle('v9.9.9')), findsOneWidget);
+
+    await tester.tap(find.text(l10n.updateLater));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text(l10n.updateAvailableTitle('v9.9.9')), findsNothing);
+
+    await tester.tap(find.byTooltip(l10n.settingsTooltip));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text(l10n.tabAbout));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text(l10n.aboutUpdate), findsOneWidget);
+    expect(find.text(l10n.aboutNewVersion('v9.9.9')), findsOneWidget);
+    expect(find.text(l10n.aboutDownloadUpdate), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+    state.dispose();
+    settings.dispose();
+    updates.dispose();
   });
 }
