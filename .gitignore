@@ -1,0 +1,35 @@
+node_modules/
+dist/
+data/
+.env
+.env.*
+!.env.example
+*.db
+*.db-wal
+*.db-shm
+*.key
+*.pem
+*.log
+.DS_Store
+
+# local EDA tooling caches (easyeda CLI daemon artifacts, scratch dumps)
+.tools/
+.easyeda/
+
+# editor local settings (contain absolute machine paths)
+.vscode/
+
+# session scratch: debug screenshots, uiauto dumps, audio probes, design previews
+.tmp_audio/
+__pycache__/
+/b_player/shot-*.png
+/b_player/screen.png
+/b_player/run*.err*
+/b_player/ui*.xml
+/b_player/preview-*.html
+
+# make_icons.py also refreshes a web favicon set; the app has no web target
+/b_player/web/
+
+# hand-made whole-repo archives, kept locally only
+/*.rar

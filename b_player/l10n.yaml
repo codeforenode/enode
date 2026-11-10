@@ -1,0 +1,10 @@
+arb-dir: lib/l10n
+template-arb-file: app_zh_Hant.arb
+output-localization-file: app_l10n.dart
+output-class: AppL10n
+nullable-getter: false
+# 生成器要求 zh_Hant 有基础语种回退，app_zh.arb 只放 @@locale；
+# 这里把“未翻译”清单写到构建目录，避免每次构建刷屏。
+untranslated-messages-file: .dart_tool/untranslated.json
+preferred-supported-locales:
+  - en

@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>eNode 歌词投放</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #000; }
+  body { -webkit-user-select: none; cursor: default; }
+  /* 画面几何全部由脚本按设计像素算出，这里只给骨架：不写任何 CSS 动画。
+     每台屏是一个独立浏览器，CSS 动画的相位对不齐；所有画面必须由
+     positionMs 显式推导，多屏才是同一个画面。 */
+  #block { position: absolute; left: 0; box-sizing: border-box; }
+  /* 左右留白放在行容器上，span 只量文字本身的宽度：
+     放在 span 上会让 scrollWidth 把内边距也算进去，第二次起就会误缩字号。 */
+  #meta, .row { display: flex; align-items: center; box-sizing: border-box; }
+  .row { overflow: hidden; }
+  #meta > span, .row > span { white-space: nowrap; display: block; }
+</style>
+</head>
+<body>
+<div id="block">
+  <div id="meta"><span></span></div>
+  <div id="rows"></div>
+</div>
+<script>
+(function () {
+  'use strict';
+
+  var cfg = {
+    k: 1, w: 1920, h: 1080,
+    style: null,
+    lines: [],
+    title: '', artist: '', seat: '',
+    durationMs: 0,
+    anchor: { positionMs: 0, wallMs: 0, playing: false }
+  };
+  var view = { vw: 0, vh: 0, rows: [], meta: '', width: -1, height: -1, scroll: null };
+
+  var elBlock = document.getElementById('block');
+  var elMeta = document.getElementById('meta');
+  var elRows = document.getElementById('rows');
+
+  function num(v, d) { return typeof v === 'number' && isFinite(v) ? v : d; }
+  function str(v) { return v == null ? '' : String(v); }
+
+  function color(argb, d) {
+    if (typeof argb !== 'number') return d || '#000';
+    var a = ((argb >>> 24) & 0xFF) / 255;
+    var r = (argb >> 16) & 0xFF, g = (argb >> 8) & 0xFF, b = argb & 0xFF;
+    return a >= 0.999
+      ? 'rgb(' + r + ',' + g + ',' + b + ')'
+      : 'rgba(' + r + ',' + g + ',' + b + ',' + a.toFixed(3) + ')';
+  }
+
+  // 与 Flutter 侧 CastLyricView 同一套排版公式，改这里要同步改那边。
+  function geometry() {
+    var s = cfg.style, k = cfg.k;
+    var pad = 20 * k;
+    var avail = Math.max(1, cfg.w - pad * 2);
+    var base = num(s.fontSize, 88) * k;
+    var sy = Math.max(0.4, Math.min(2, num(s.textHeight, 100) / 100));
+    // 字高拉长时行高跟着长，行间距始终是额外的空白。
+    var rowH = Math.max(base * 1.5, base * 1.2 * sy) + num(s.lineGap, 0) * k;
+    var metaH = view.meta === '' ? 0 : base * 0.34 + 12 * k;
+    var total = metaH + view.rows.length * rowH;
+    var y = cfg.h * (num(s.vertical, 50) / 100) - total / 2;
+    y = Math.max(0, Math.min(Math.max(0, cfg.h - total), y));
+    return { k: k, pad: pad, avail: avail, base: base, rowH: rowH, metaH: metaH, total: total, y: y };
+  }
+
+  function positionMs() {
+    var a = cfg.anchor;
+    return a.playing ? Math.max(0, a.positionMs + (Date.now() - a.wallMs)) : Math.max(0, a.positionMs);
+  }
+
+  function indexAt(lines, ms) {
+    var idx = -1;
+    for (var i = 0; i < lines.length; i++) {
+      if (lines[i][0] > ms) break;
+      idx = i;
+    }
+    return idx;
+  }
+
+  // 一行的起止时间：没给行尾就取下一行的起点，最后一行兜底 4 秒。
+  function rowTimes(lines, i) {
+    var s = num(lines[i][0], 0);
+    var e = lines[i][2] != null ? num(lines[i][2], 0)
+        : (i + 1 < lines.length ? num(lines[i + 1][0], 0) : s + 4000);
+    return { s: s, e: e > s ? e : s + 4000 };
+  }
+
+  // 1 句只当前；2 句=当前+下一句；3 句及以上=上一句+当前+下一句。
+  function currentRows() {
+    var lines = cfg.lines;
+    if (!lines.length) return [];
+    var n = Math.max(1, num(cfg.style.lines, 2));
+    var before = n >= 3 ? 1 : 0;
+    var after = n === 1 ? 0 : 1;
+    var i = indexAt(lines, positionMs() + num(cfg.style.offsetMs, 0));
+    i = i < 0 ? 0 : Math.min(i, lines.length - 1);
+    var out = [];
+    for (var j = i - before; j <= i + after; j++) {
+      if (j >= 0 && j < lines.length) {
+        var t = rowTimes(lines, j);
+        out.push({ t: str(lines[j][1]), c: j === i, s: t.s, e: t.e });
+      }
+    }
+    return out;
+  }
+
+  function metaText() {
+    var s = cfg.style, parts = [];
+    if (s.showTitle && str(cfg.title).trim()) parts.push(str(cfg.title).trim());
+    if (s.showArtist && str(cfg.artist).trim()) parts.push(str(cfg.artist).trim());
+    if (s.showSeat && str(cfg.seat).trim()) parts.push(str(cfg.seat).trim());
+    return parts.join(' · ');
+  }
+
+  function font(el, size, weight, family, colorValue, s, k) {
+    el.style.fontFamily = str(family) || 'sans-serif';
+    el.style.fontSize = size + 'px';
+    el.style.fontWeight = String(weight || 600);
+    el.style.color = colorValue;
+    el.style.letterSpacing = (size * 0.01) + 'px';
+    el.style.lineHeight = '1.2';
+    var sw = num(s.strokeWidth, 0) * k * 2;
+    el.style.webkitTextStrokeWidth = sw > 0.5 ? sw + 'px' : '0';
+    el.style.webkitTextStrokeColor = '#000';
+    el.style.paintOrder = 'stroke fill';
+    el.style.textShadow = s.shadow ? '0 ' + (3 * k) + 'px ' + (10 * k) + 'px rgba(0,0,0,0.7)' : 'none';
+  }
+
+  // 附加信息（歌名/歌手）放不下就等比缩字号；歌词行不缩，超宽靠横向滚动。
+  function fitSpan(span, avail) {
+    var w = span.scrollWidth;
+    if (w > avail && w > 0) {
+      var size = parseFloat(span.style.fontSize) * avail / w;
+      span.style.fontSize = size + 'px';
+      span.style.letterSpacing = (size * 0.01) + 'px';
+    }
+  }
+
+  // 超宽行的横向位移：把唱到的横向位置保持在可视区约 65% 处，两端夹住。
+  function scrollOffset(textWidth, avail, focus) {
+    var max = Math.max(0, textWidth - avail);
+    var value = focus - avail * 0.65;
+    return value <= 0 ? 0 : value >= max ? max : value;
+  }
+
+  function paintBackground(s) {
+    var body = document.body.style;
+    var bg = str(s.background);
+    body.backgroundImage = '';
+    body.backgroundSize = '';
+    if (bg === 'gradient') {
+      body.backgroundColor = color(s.gradientBottom, '#000');
+      body.backgroundImage = 'linear-gradient(180deg, ' + color(s.gradientTop, '#101720') +
+        ', ' + color(s.gradientBottom, '#000') + ')';
+    } else if (bg === 'image' && str(s.imagePath)) {
+      body.backgroundColor = '#000';
+      body.backgroundImage = 'url("' + str(s.imagePath) + '")';
+      body.backgroundSize = s.imageFit === false ? 'contain' : 'cover';
+      body.backgroundRepeat = 'no-repeat';
+      body.backgroundPosition = 'center center';
+    } else {
+      body.backgroundColor = bg === 'color' ? color(s.solidColor, '#000') : '#000';
+    }
+  }
+
+  function render(force) {
+    var s = cfg.style;
+    if (!s) return;
+    var rows = currentRows();
+    var meta = metaText();
+    if (!force && view.vw === cfg.w && view.vh === cfg.h &&
+        view.meta === meta && sameRows(view.rows, rows)) return;
+    view.vw = cfg.w; view.vh = cfg.h; view.meta = meta; view.rows = rows;
+
+    var g = geometry();
+    if (force || view.width !== cfg.w || view.height !== cfg.h) {
+      view.width = cfg.w; view.height = cfg.h;
+      document.documentElement.style.width = cfg.w + 'px';
+      document.body.style.width = cfg.w + 'px';
+      document.body.style.height = cfg.h + 'px';
+      paintBackground(s);
+    }
+
+    elBlock.style.top = g.y + 'px';
+    elBlock.style.left = '0';
+    elBlock.style.width = cfg.w + 'px';
+    elBlock.style.height = g.total + 'px';
+
+    if (meta) {
+      elMeta.style.display = 'flex';
+      elMeta.style.height = g.metaH + 'px';
+      elMeta.style.justifyContent = align(s);
+      elMeta.style.padding = '0 ' + g.pad + 'px';
+      var ms = metaChild();
+      font(ms, g.base * 0.34, 500, s.fontFamily, color(s.otherColor, '#8B979F'), s, g.k);
+      if (ms.textContent !== meta) ms.textContent = meta;
+      fitSpan(ms, g.avail);
+    } else {
+      elMeta.style.display = 'none';
+    }
+
+    var box = rowsChild(rows.length);
+    var sx = Math.max(0.4, Math.min(2, num(s.textWidth, 100) / 100));
+    var sy = Math.max(0.4, Math.min(2, num(s.textHeight, 100) / 100));
+    var otherOpacity = Math.max(0, Math.min(1, num(s.otherOpacity, 100) / 100));
+    elRows.style.justifyContent = 'center';
+    view.scroll = null;
+    for (var i = 0; i < rows.length; i++) {
+      var row = box[i];
+      row.style.height = g.rowH + 'px';
+      row.style.padding = '0 ' + g.pad + 'px';
+      // 非当前句整行淡出（含描边/阴影）；当前句与附加信息保持原样。
+      row.style.opacity = rows[i].c ? '1' : String(otherOpacity);
+      var span = row.firstChild;
+      if (span.textContent !== rows[i].t) span.textContent = rows[i].t;
+      font(span, g.base, num(s.fontWeight, 600), s.fontFamily,
+        rows[i].c ? color(s.currentColor, '#3DDC84') : color(s.otherColor, '#8B979F'), s, g.k);
+      // 量真实占用宽度（含横向拉伸）：超宽就左对齐 + 当前句跟随演唱滚动，绝不缩字号。
+      // 用 offsetWidth 量布局宽度，getBoundingClientRect 会把上一帧的位移也算进去。
+      var spanW = span.offsetWidth * sx;
+      var over = spanW > g.avail + 0.5;
+      if (over) {
+        row.style.justifyContent = 'flex-start';
+        row.style.clipPath = 'inset(0 ' + g.pad + 'px)';
+        span.style.transformOrigin = 'left center';
+        // 非当前行不滚：清掉上一句留下的位移，当前行随后由 updateScroll 接管。
+        span.style.transform = 'translateX(0px) scale(' + sx + ',' + sy + ')';
+      } else {
+        row.style.justifyContent = align(s);
+        row.style.clipPath = '';
+        // 只拉伸字形，不改变布局宽度；对齐点跟着文字方向走，左右不跑位。
+        span.style.transformOrigin =
+          s.align === 'left' ? 'left center' : s.align === 'right' ? 'right center' : 'center center';
+        span.style.transform = (sx !== 1 || sy !== 1) ? 'scale(' + sx + ',' + sy + ')' : 'none';
+      }
+      if (rows[i].c && over) {
+        view.scroll = { span: span, w: spanW, sx: sx, sy: sy, s: rows[i].s, e: rows[i].e, avail: g.avail };
+      }
+    }
+    updateScroll();
+  }
+
+  // 当前句跟着演唱走：按整行时间比例推进横向位移。
+  function updateScroll() {
+    var sc = view.scroll;
+    if (!sc) return;
+    var span = sc.e > sc.s ? sc.e - sc.s : 1;
+    var q = (positionMs() + num(cfg.style.offsetMs, 0) - sc.s) / span;
+    q = q < 0 ? 0 : q > 1 ? 1 : q;
+    var shift = scrollOffset(sc.w, sc.avail, sc.w * q);
+    sc.span.style.transform =
+      'translateX(' + (-shift).toFixed(2) + 'px) scale(' + sc.sx + ',' + sc.sy + ')';
+  }
+
+  function align(s) {
+    return s.align === 'left' ? 'flex-start' : s.align === 'right' ? 'flex-end' : 'center';
+  }
+
+  function alpha(rgb, a) {
+    var m = /^rgb\((\d+),(\d+),(\d+)\)$/.exec(rgb);
+    return m ? 'rgba(' + m[1] + ',' + m[2] + ',' + m[3] + ',' + a + ')' : rgb;
+  }
+
+  function sameRows(a, b) {
+    if (a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++) if (a[i].t !== b[i].t || a[i].c !== b[i].c) return false;
+    return true;
+  }
+
+  function metaChild() {
+    if (!elMeta.firstChild) elMeta.appendChild(document.createElement('span'));
+    return elMeta.firstChild;
+  }
+
+  var boxRows = [];
+  function rowsChild(n) {
+    while (boxRows.length < n) {
+      var d = document.createElement('div');
+      d.className = 'row';
+      d.appendChild(document.createElement('span'));
+      elRows.appendChild(d);
+      boxRows.push(d);
+    }
+    for (var i = n; i < boxRows.length; i++) boxRows[i].style.display = 'none';
+    for (var j = 0; j < n; j++) boxRows[j].style.display = 'flex';
+    return boxRows;
+  }
+
+  window.enode = {
+    apply: function (next) {
+      if (!next || typeof next !== 'object') return;
+      if (next.style) cfg.style = next.style;
+      if (next.geometry) { cfg.k = num(next.geometry.k, 1); cfg.w = num(next.geometry.w, cfg.w); cfg.h = num(next.geometry.h, cfg.h); }
+      if (next.lines) cfg.lines = next.lines;
+      if (next.nowPlaying) {
+        cfg.title = str(next.nowPlaying.title);
+        cfg.artist = str(next.nowPlaying.artist);
+        cfg.seat = str(next.nowPlaying.seat);
+        cfg.durationMs = num(next.nowPlaying.durationMs, 0);
+      }
+      if (next.tick) {
+        cfg.anchor = {
+          positionMs: num(next.tick.positionMs, 0),
+          wallMs: num(next.tick.wallMs, Date.now()),
+          playing: !!next.tick.playing
+        };
+      }
+      render(true);
+    },
+    ready: true
+  };
+
+  // canvas 投放模式：宿主页 canvas.html 用 postMessage 把同一份 payload 分发给
+  // 每块屏的歌词页。独立窗口那套仍然直接 ExecuteJavaScript，两条路共用 apply。
+  window.addEventListener('message', function (e) {
+    var data = e.data;
+    if (data && data.enode) window.enode.apply(data.enode);
+  });
+
+  // 走词 5 帧/秒足够：进度与当前句都由锚点自己算，不需要逐帧 IPC。
+  setInterval(function () { render(false); }, 200);
+  // 横向跟随要逐帧才跟手：只改当前句的 transform，不重建节点。
+  requestAnimationFrame(function frame() {
+    updateScroll();
+    requestAnimationFrame(frame);
+  });
+  render(true);
+})();
+</script>
+</body>
+</html>
