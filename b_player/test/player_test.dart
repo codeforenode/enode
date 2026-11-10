@@ -134,7 +134,10 @@ class _FakeEngine implements AudioEngine {
   void emitError(String message) => _error.add(message);
 }
 
-({AppState state, _FakeEngine engine, _FakeSource source}) _build({Set<String> failingKeys = const {}}) {
+({AppState state, _FakeEngine engine, _FakeSource source}) _build({
+  Set<String> failingKeys = const {},
+  Duration watchdog = const Duration(seconds: 8),
+}) {
   final tracks = [
     Track(trackKey: 'fake:a', title: '甲', artist: 'A', durationMs: 3000, sourceId: 'fake'),
     Track(trackKey: 'fake:bad', title: '坏', artist: 'B', durationMs: 3000, sourceId: 'fake'),
@@ -146,6 +149,7 @@ class _FakeEngine implements AudioEngine {
     mqtt: _mqtt,
     library: Library([source], tracks: tracks),
     engine: engine,
+    watchdogPeriod: watchdog,
   );
   return (state: state, engine: engine, source: source);
 }
@@ -294,6 +298,31 @@ void main() {
     expect(h.engine.opened[2].toString(), contains('fake_b'));
     expect(h.source.audioCalls, 3, reason: '坏歌入队 1 次 + 重取 1 次，乙入队 1 次后播放复用缓存');
     expect(h.state.playbackError, l10n.playOpenFailed('坏', 'Bad state: 解码失败'));
+  });
+
+  test('打开后一直没有进度：先重取直链重开，第二次仍无进度才跳过', () async {
+    final h = _build(watchdog: const Duration(milliseconds: 60));
+    addTearDown(h.state.dispose);
+
+    await _enqueue(h.state, 'fake:a');
+    await pumpEventQueue();
+    expect(h.engine.opened, hasLength(1));
+    expect(h.source.audioCalls, 1);
+
+    // 引擎打开成功但从不报进度：这正是直链过期的典型表现。
+    await Future<void>.delayed(const Duration(milliseconds: 90));
+    await pumpEventQueue();
+
+    expect(h.source.audioCalls, 2, reason: '先按直链过期重取一次');
+    expect(h.engine.opened, hasLength(2), reason: '新链要重新交给引擎');
+    expect(h.state.queue, hasLength(1), reason: '还有救的时候不能跳歌');
+    expect(h.state.playbackError, isNull);
+
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    await pumpEventQueue();
+
+    expect(h.state.queue, isEmpty, reason: '重取后仍无进度，才判定放不了');
+    expect(h.state.playbackError, isNotNull);
   });
 
   test('健康状态里的 caps 跟随真实能力', () async {

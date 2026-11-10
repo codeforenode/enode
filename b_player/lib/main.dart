@@ -148,6 +148,8 @@ class _BPlayerAppState extends State<BPlayerApp> with WidgetsBindingObserver {
       webDav: widget.bootstrap?.webDav,
       engine: widget.engine,
     );
+    // 出厂歌单在后台解析（首次要检索上游，几十秒），不阻塞首屏。
+    if (!_state.demoMode) unawaited(_state.featured.prepare());
     // 投放只在 Windows 有意义：其他平台连屏都扫不到，别白扫还白写一次设置。
     if (Platform.isWindows) {
       _state.bindCastWindows();
