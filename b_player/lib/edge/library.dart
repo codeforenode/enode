@@ -22,8 +22,12 @@ class Library {
 
   static const _onlineTrackCapacity = 2000;
 
-  /// 在线直链有时效，缓存只保 10 分钟；过期或播放失败后重新取链。
-  static const _audioTtl = Duration(minutes: 10);
+  /// 在线直链有时效（上游通常 20–30 分钟），缓存只留 3 分钟。
+  ///
+  /// 入队时的那次取链只是「探测这首能不能播」，顾客前面可能还排着好几首；等轮到
+  /// 他时缓存早已不该再用。留 3 分钟足够覆盖「搜到就点」的即时场景，又不会让排队的歌
+  /// 拿着快过期的直链去开。
+  static const _audioTtl = Duration(minutes: 3);
 
   final MusicSourceRegistry registry;
 

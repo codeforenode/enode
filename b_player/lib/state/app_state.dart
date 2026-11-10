@@ -60,13 +60,14 @@ class AppState extends ChangeNotifier {
     this.onlineSource,
     this.webDav,
     this.engine,
+    this.watchdogPeriod = const Duration(seconds: 8),
   })  : demoMode = library == null,
         library = library ?? Library.demo() {
     queue = demoMode ? _demoQueue(this.library) : <QueueItem>[];
     playing = demoMode;
-    // 出厂歌单要检索上游解析出 trackKey，演示模式没有在线音源，直接跳过。
+    // 出厂歌单要读 asset 并检索上游，属于副作用，交给入口显式触发
+    // （测试构造 AppState 时不该联网，也不该依赖 binding）。
     featured = FeaturedService(library: this.library);
-    if (!demoMode) unawaited(featured.prepare());
     edge = EdgeNode(
       search: (q, offset, limit) => this.library.searchAsync(q, offset: offset, limit: limit),
       enqueue: _handleEnqueue,
@@ -120,6 +121,9 @@ class AppState extends ChangeNotifier {
 
   /// 兜底映射的预算：映射和取链共用那 9s，给取链留大头。
   static const _remapBudget = Duration(seconds: 3);
+
+  /// 打开后多久没有进度就判定打不开；正常 8 秒，测试可注入更短的值。
+  final Duration watchdogPeriod;
 
   bool playing = true;
 
@@ -662,15 +666,48 @@ class AppState extends ChangeNotifier {
     } catch (_) {}
     // libmpv 遇到损坏/不支持的格式通常不会让 open 抛错，只发 error。
     // 8 秒内既没有时长也没有进度就当作打不开，跳过以免队列卡死。
-    _watchdog = Timer(const Duration(seconds: 8), () {
+    _armWatchdog(head, gen);
+    notifyListeners();
+  }
+
+  /// 8 秒没有进度就判定这首打不开。
+  ///
+  /// 直链过期最常见的表现是「open 不报错、但永远读不出内容」，所以先按过期处理一次
+  /// （重取链 + 重开），只有第二次仍然没有进度才跳过——否则会把本来能救回来的歌直接跳掉。
+  /// 救援只做一次，真正的坏文件不会反复卡 8 秒。
+  void _armWatchdog(QueueItem head, int gen, {bool allowRecover = true}) {
+    _cancelWatchdog();
+    _watchdog = Timer(watchdogPeriod, () async {
       if (_disposed || gen != _playGen) return;
       final np = nowPlaying;
       if (np == null || np.positionMs > 0) return;
-      // 直链过期也长这样：打开不报错但没有进度。
-      library.invalidateAudio(np.trackKey);
+      if (allowRecover && await _recoverStaleLink(head, gen)) {
+        _armWatchdog(head, gen, allowRecover: false);
+        return;
+      }
+      if (_disposed || gen != _playGen) return;
       _failAndSkip(l10n.skipUnplayable(np.title), gen);
     });
-    notifyListeners();
+  }
+
+  /// 丢掉可能过期的直链、重新取一次并重开播放。返回新链是否已交给引擎。
+  Future<bool> _recoverStaleLink(QueueItem head, int gen) async {
+    final e = engine;
+    if (e == null) return false;
+    library.invalidateAudio(head.trackKey);
+    AudioRef? refetched;
+    try {
+      refetched = await library.audioFor(head.trackKey, refresh: true);
+    } catch (_) {
+      refetched = null;
+    }
+    if (refetched == null || _disposed || gen != _playGen) return false;
+    try {
+      await e.open(refetched.uri, autoplay: playing, headers: refetched.headers);
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   void _cancelWatchdog() {
