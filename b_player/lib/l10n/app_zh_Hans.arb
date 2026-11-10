@@ -167,6 +167,7 @@
   "unknownArtist": "未知歌手",
   "lyricsEmpty": "歌词为空",
   "noLyrics": "没有歌词",
+  "castNoLyrics": "暂无歌词",
 
   "onlineLibrary": "在线曲库",
   "localFolder": "本地目录",

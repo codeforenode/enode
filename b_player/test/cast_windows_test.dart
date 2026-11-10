@@ -133,12 +133,14 @@ void main() {
       ]);
       expect(payload['seat'], l10n.seatLocal);
       expect(payload['durationMs'], 61000);
+      expect(payload['hasTrack'], true);
       final fromSeat = castLyricPush(
         lines: const [],
         nowPlaying: QueueItem(trackKey: 'k', title: 't', artist: 'a', durationMs: 0, seat: 'A-07'),
       );
       expect(fromSeat['seat'], 'A-07');
       expect(castLyricPush(lines: const [])['title'], isNull);
+      expect(castLyricPush(lines: const [])['hasTrack'], false);
     });
 
     test('锚点是「位置 + 当时的墙钟 + 是否在播」三件套', () {

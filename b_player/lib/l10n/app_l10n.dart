@@ -915,6 +915,12 @@ abstract class AppL10n {
   /// **'沒有歌詞'**
   String get noLyrics;
 
+  /// No description provided for @castNoLyrics.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'暫無歌詞'**
+  String get castNoLyrics;
+
   /// No description provided for @onlineLibrary.
   ///
   /// In zh_Hant, this message translates to:

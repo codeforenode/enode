@@ -1,5 +1,6 @@
 import 'dart:ui';
 
+import 'package:b_player/l10n/l10n.dart';
 import 'package:b_player/state/cast_settings.dart';
 import 'package:b_player/state/lrc.dart';
 import 'package:b_player/desktop/cast_web.dart';
@@ -87,13 +88,22 @@ void main() {
       ],
       [3500, '第二句', 7000],
     ]);
-    expect(payload['nowPlaying'], {'title': '青花瓷', 'artist': '周杰伦', 'seat': 'A12', 'durationMs': 210000});
+    expect(payload['nowPlaying'],
+        {'title': '青花瓷', 'artist': '周杰伦', 'seat': 'A12', 'durationMs': 210000, 'hasTrack': false});
+    expect(payload['noLyrics'], l10n.castNoLyrics);
     // 行文本走 JSON 转义，引号与换行不会把 JS 拼坏。
     final js = castApplyScript(castWebLyric(const [
       (startMs: 0, endMs: 5000, text: '说"唱"\n下一行', words: <LyricWord>[]),
     ]));
     expect(js, contains(r'\"'));
     expect(js, contains(r'\n'));
+  });
+
+  test('有曲目才带 hasTrack，占位文案随语言走', () {
+    final playing = castWebLyric(const [], title: '无词曲', hasTrack: true);
+    expect((playing['nowPlaying'] as Map)['hasTrack'], true);
+    expect(playing['lines'], isEmpty);
+    expect(playing['noLyrics'], l10n.castNoLyrics);
   });
 
   test('投放页地址落在打包产物的 flutter_assets 里', () {

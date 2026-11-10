@@ -77,6 +77,7 @@ Map<String, Object?> castLyricPush({required List<LyricLine> lines, QueueItem? n
       'artist': nowPlaying?.artist,
       'seat': nowPlaying?.seatLabel,
       'durationMs': nowPlaying?.durationMs ?? 0,
+      'hasTrack': nowPlaying != null,
     };
 
 /// 时钟锚点：推的是「此刻的绝对位置 + 当时的墙钟」，子引擎自己往前推，
@@ -303,7 +304,8 @@ class CastWindows {
     if (!useCanvas && live.isEmpty) return;
     final np = _state.nowPlaying;
     final lines = _state.lyricLines;
-    final sig = '${np?.trackKey ?? '-'}|${lines.length}';
+    // 语言也算签名：占位文案随界面语言，切语言要重推一次。
+    final sig = '${np?.trackKey ?? '-'}|${lines.length}|${currentLocale.toLanguageTag()}';
     if (forceLyric || sig != _lyricSig) {
       _lyricSig = sig;
       if (useCanvas) {
@@ -313,6 +315,7 @@ class CastWindows {
           artist: np?.artist,
           seat: np?.seatLabel,
           durationMs: np?.durationMs ?? 0,
+          hasTrack: np != null,
         );
       } else {
         final payload = castLyricPush(lines: lines, nowPlaying: np);

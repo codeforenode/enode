@@ -32,6 +32,7 @@
     lines: [],
     title: '', artist: '', seat: '',
     durationMs: 0,
+    hasTrack: false, noLyrics: '',
     anchor: { positionMs: 0, wallMs: 0, playing: false }
   };
   var view = { vw: 0, vh: 0, rows: [], meta: '', width: -1, height: -1, scroll: null };
@@ -172,6 +173,10 @@
     var s = cfg.style;
     if (!s) return;
     var rows = currentRows();
+    // 有曲目却没取到歌词：给一行「暂无歌词」，样式等同非当前句；待机态保持空白。
+    if (!rows.length && cfg.hasTrack && cfg.noLyrics) {
+      rows = [{ t: cfg.noLyrics, c: false, s: 0, e: 0 }];
+    }
     var meta = metaText();
     if (!force && view.vw === cfg.w && view.vh === cfg.h &&
         view.meta === meta && sameRows(view.rows, rows)) return;
@@ -297,11 +302,13 @@
       if (next.style) cfg.style = next.style;
       if (next.geometry) { cfg.k = num(next.geometry.k, 1); cfg.w = num(next.geometry.w, cfg.w); cfg.h = num(next.geometry.h, cfg.h); }
       if (next.lines) cfg.lines = next.lines;
+      if (next.noLyrics) cfg.noLyrics = str(next.noLyrics);
       if (next.nowPlaying) {
         cfg.title = str(next.nowPlaying.title);
         cfg.artist = str(next.nowPlaying.artist);
         cfg.seat = str(next.nowPlaying.seat);
         cfg.durationMs = num(next.nowPlaying.durationMs, 0);
+        cfg.hasTrack = next.nowPlaying.hasTrack === true;
       }
       if (next.tick) {
         cfg.anchor = {

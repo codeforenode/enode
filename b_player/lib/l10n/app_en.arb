@@ -149,6 +149,7 @@
   "unknownArtist": "Unknown artist",
   "lyricsEmpty": "Lyrics are empty",
   "noLyrics": "No lyrics",
+  "castNoLyrics": "No lyrics",
 
   "onlineLibrary": "Online library",
   "localFolder": "Local folder",
