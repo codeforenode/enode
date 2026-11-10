@@ -137,6 +137,20 @@ main {
 .empty { color: var(--muted); font-size: 14px; padding: 10px 2px; }
 .empty.small { padding: 4px 2px; font-size: 13px; }
 
+/* 出厂歌单：卡内直接铺开 10 条，不跟着搜索结果一起限高滚动。 */
+.featured-head { justify-content: space-between; }
+.featured-list { max-height: none; overflow: visible; }
+.link-btn {
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 12.5px;
+  letter-spacing: 0;
+  padding: 2px 0;
+  cursor: pointer;
+}
+
 .now-title {
   font-size: 20px;
   font-weight: 600;

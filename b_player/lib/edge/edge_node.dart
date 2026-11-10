@@ -20,6 +20,9 @@ typedef EnqueueFn = FutureOr<EnqueueResult> Function(EnqueueRequest req);
 typedef SnapshotFn = Map<String, Object?> Function();
 typedef HealthFn = Map<String, Object?> Function();
 
+/// 出厂歌单的应答体（纯内存，不需要异步）：`{ready, resolved, failed, seed, items}`。
+typedef FeaturedFn = Map<String, Object?> Function();
+
 /// 当前曲目的歌词体：`{trackKey, format, offsetMs, text}`；无曲目时返回 null。
 /// 歌词可能来自文件/远程音源，因此和 any-listen 的资源接口一样是异步的。
 typedef LyricFn = Future<Map<String, Object?>?> Function();
@@ -35,6 +38,7 @@ class EdgeNode extends ChangeNotifier {
     required this.snapshot,
     required this.health,
     required this.lyric,
+    required this.featured,
     MqttConfig? config,
   }) : config = config ?? const MqttConfig() {
     unawaited(_init());
@@ -52,6 +56,7 @@ class EdgeNode extends ChangeNotifier {
   final SnapshotFn snapshot;
   final HealthFn health;
   final LyricFn lyric;
+  final FeaturedFn featured;
 
   /// 「广播」页改了参数就整体换掉并重连。
   MqttConfig config;
@@ -102,6 +107,7 @@ class EdgeNode extends ChangeNotifier {
   String get eventsTopicName => eventsTopic(config.topicPrefix, nodeId);
   String get searchReqTopicName => searchReqTopic(config.topicPrefix, nodeId);
   String get enqueueReqTopicName => enqueueReqTopic(config.topicPrefix, nodeId);
+  String get featuredReqTopicName => featuredReqTopic(config.topicPrefix, nodeId);
 
   Future<void> _init() async {
     _nodeId = await NodeIdentity.ensure();
@@ -209,6 +215,7 @@ class EdgeNode extends ChangeNotifier {
     _sub ??= c?.updates?.listen(_handleMessages);
     c?.subscribe(searchReqTopicName, MqttQos.atLeastOnce);
     c?.subscribe(enqueueReqTopicName, MqttQos.atLeastOnce);
+    c?.subscribe(featuredReqTopicName, MqttQos.atLeastOnce);
 
     publishHealth();
     publishSnapshot();
@@ -437,6 +444,8 @@ class EdgeNode extends ChangeNotifier {
           unawaited(_handleSearch(text));
         case final t when t == enqueueReqTopicName:
           _handleEnqueue(text);
+        case final t when t == featuredReqTopicName:
+          _handleFeatured(text);
       }
     }
   }
@@ -486,6 +495,27 @@ class EdgeNode extends ChangeNotifier {
       _respond(topic, _errorEnvelope(tSearchResp, nonce, errInternal, null));
     }
     notifyListeners();
+  }
+
+  /// 出厂歌单只读内存，不触碰音源，也没有超时风险。
+  void _handleFeatured(String text) {
+    final env = EdgeEnvelope.parse(_decodeJson(text));
+    if (env == null || env.type != tFeaturedReq || env.node != nodeId) return;
+    final nonce = env.nonce?.trim();
+    if (nonce == null || nonce.isEmpty) return;
+    final topic = featuredRespTopic(config.topicPrefix, nodeId, nonce);
+    try {
+      final body = featured();
+      _respond(topic, EdgeEnvelope(
+        type: tFeaturedResp,
+        node: nodeId,
+        ts: _now(),
+        nonce: nonce,
+        payload: {'ok': true, ...body},
+      ));
+    } catch (_) {
+      _respond(topic, _errorEnvelope(tFeaturedResp, nonce, errInternal, null));
+    }
   }
 
   void _handleEnqueue(String text) {

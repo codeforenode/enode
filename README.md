@@ -102,7 +102,12 @@ MQTT_USERNAME=<账号> MQTT_PASSWORD='<密码>' \
 npm start                       # 默认 0.0.0.0:8080，PORT 可改；同时静态托管 ../guest
 ```
 
-TLS 连接设 `MQTT_TLS=1`。接口：`GET /api/state`、`GET /api/search?q=`、`POST /api/enqueue`。
+TLS 连接设 `MQTT_TLS=1`。接口：`GET /api/state`、`GET /api/search?q=`、`POST /api/enqueue`、`GET /api/featured`。
+
+`/api/featured` 是 C 端冷启动的默认歌单（节点内置「本店常点」，约 40 首、首屏展示 8 首 +
+换一批）。歌单种子在 `b_player/assets/featured/default.json`，只存歌名/歌手/时长，不含音频；
+节点启动后用关键词检索解析出真正的曲目并缓存到应用支持目录，因此 C 端拿到的 `trackKey`
+可以直接点歌。节点未就绪时 `ready` 为 `false`，C 端会隐藏或先渲染已有部分。
 
 ### Windows 实现细节
 
@@ -123,12 +128,19 @@ TLS 连接设 `MQTT_TLS=1`。接口：`GET /api/state`、`GET /api/search?q=`、
   未配置时不连接 broker。日志与提交信息不得打印凭据值。
 - **中继**：环境变量 `MQTT_HOST`（必填，缺失拒绝启动）、`MQTT_PORT`（默认 1883）、
   `MQTT_USERNAME`、`MQTT_PASSWORD`、`MQTT_TLS`（`1` 开启）、`MQTT_TOPIC_PREFIX`（默认 `node`，
-  需与节点一致）。限流、RPC 超时、快照 TTL 见 [`relay/config.js`](relay/config.js)。
+  需与节点一致）、`TARGET_NODE`（本店权威节点的 nodeId）。限流、RPC 超时、快照 TTL 见
+  [`relay/config.js`](relay/config.js)。
+
+  **`TARGET_NODE` 可选**：不填时中继自动固定第一台在线节点，选定后不再随 `health` 心跳漂移
+  （`nodeId` 跨重启稳定，节点重连仍命中同一台）。填了则只认它，离线时直接报错而不回退——
+  适用于有多台节点、需要明确指定权威机的情况。
 - **在线音源**：地址与密钥在运行时导入，落节点本地存储，不入库、不打日志。
 
 ## 已知边界
 
-- 多节点路由未落地：`relay` 当前选择 `health` 最新的在线节点（`selectNode`），等价于一中继一节点；
+- v1 只支持单节点：`relay` 选定一台节点后固定使用，不按 `health` 最新漂移（`nodeId` 跨重启稳定，
+  节点重连后仍是同一台）；配了 `TARGET_NODE` 则只认它，离线时直接报错而不回退到别处。多台节点
+  同时在线属配置错误，只使用第一台并告警。跨节点检索、扇出聚合与跨节点队列迁移均不支持；
   协议 §10 已定义节点绑定表与 `NODE_NOT_BOUND` 处置。
 - v1 无应用层签名与防重放，只有 broker 连接与主题权限；建议用 EMQX 主题级 ACL 约束。
 - 队列不跨节点迁移：节点离线期间 `enqueue` 返回不可用，不做补发。

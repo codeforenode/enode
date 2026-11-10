@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../desktop/cast_windows.dart';
 import '../edge/config.dart';
 import '../edge/edge_node.dart';
+import '../edge/featured.dart';
 import '../edge/library.dart';
 import '../edge/library_bootstrap.dart';
 import '../edge/library_permissions.dart';
@@ -63,12 +64,16 @@ class AppState extends ChangeNotifier {
         library = library ?? Library.demo() {
     queue = demoMode ? _demoQueue(this.library) : <QueueItem>[];
     playing = demoMode;
+    // 出厂歌单要检索上游解析出 trackKey，演示模式没有在线音源，直接跳过。
+    featured = FeaturedService(library: this.library);
+    if (!demoMode) unawaited(featured.prepare());
     edge = EdgeNode(
       search: (q, offset, limit) => this.library.searchAsync(q, offset: offset, limit: limit),
       enqueue: _handleEnqueue,
       snapshot: _snapshot,
       health: _health,
       lyric: _lyric,
+      featured: featured.payload,
       config: mqtt,
     );
     if (engine == null) {
@@ -107,10 +112,14 @@ class AppState extends ChangeNotifier {
   StreamSubscription<bool>? _completedSub;
   StreamSubscription<String>? _errorSub;
   late final EdgeNode edge;
+  late final FeaturedService featured;
   late final List<QueueItem> queue;
 
   /// 入队取链的时间预算：中继等节点应答上限是 9s，这里留出余量。
   static const _enqueueResolveBudget = Duration(seconds: 6);
+
+  /// 兜底映射的预算：映射和取链共用那 9s，给取链留大头。
+  static const _remapBudget = Duration(seconds: 3);
 
   bool playing = true;
 
@@ -779,8 +788,14 @@ class AppState extends ChangeNotifier {
   /// 入队前先解析一次播放地址：解析不出来的曲目不接受，
   /// 否则顾客只会看到自己点的歌在队列里闪一下就没了（错误只有 B端 屏幕能看见）。
   Future<EnqueueResult> _handleEnqueue(EnqueueRequest req) async {
-    final track = library.byKey(req.trackKey);
-    if (track == null) return const EnqueueResult.rejected(errTrackNotFound);
+    var track = library.byKey(req.trackKey);
+    // 节点重启、换机，或页面开了很久之后，本机可能已经不认识这个 trackKey（在线曲目
+    // 只缓存在内存里）。用请求里的歌名/歌手在本机重新映射一次（协议 §10.3），
+    // 映射不到才算真的没有。
+    if (track == null) {
+      track = await _remapTrack(req);
+      if (track == null) return const EnqueueResult.rejected(errTrackNotFound);
+    }
     if (queue.length >= 200) {
       return const EnqueueResult.rejected(errQueueFull, '前面排队的人太多了，稍后再点');
     }
@@ -810,6 +825,39 @@ class AppState extends ChangeNotifier {
     // 空闲时入队会直接开播，此时曲目已切换，必须重发歌词主题。
     if (wasEmpty) edge.publishLyric();
     return EnqueueResult.accepted(queue.length);
+  }
+
+  /// 把已经失效的 trackKey 映射成本机曲库里真实存在的一条。
+  ///
+  /// 在线曲目 `lx:` 的 trackKey 由 `platform:songId` 决定；但取链依赖本机的在线曲目
+  /// 元数据缓存（只在内存里），节点重启后就散了。这里补一次检索并 remember，
+  /// 之后 `audioFor` 才能解析出播放地址。
+  Future<Track?> _remapTrack(EnqueueRequest req) async {
+    final hint = req.hint;
+    if (hint == null) return null;
+    final queries = <String>[
+      hint.title,
+      if (hint.artist.isNotEmpty) '${hint.title} ${hint.artist}',
+    ];
+    for (final query in queries) {
+      try {
+        final page = await library.searchAsync(query, limit: 12, timeout: _remapBudget);
+        final hit = matchCandidate(
+          page.items,
+          trackKey: req.trackKey,
+          title: hint.title,
+          artist: hint.artist,
+          durationMs: hint.durationMs,
+        );
+        if (hit != null) {
+          library.remember([hit]);
+          return hit;
+        }
+      } catch (_) {
+        // 在线音源不可用就算了：映射不到就老实回 TRACK_NOT_FOUND。
+      }
+    }
+    return null;
   }
 
   Map<String, Object?> _snapshot() {
@@ -892,6 +940,8 @@ class AppState extends ChangeNotifier {
         // 没有可播结果时不声明 search，避免 C端 搜出一支点不响的歌。
         'caps': [
           if (library.canSearch) 'search',
+          // 歌单曲目同样要能取链，跟着 search 一起开关。
+          if (library.canSearch) capFeatured,
           'enqueue',
           'snapshot',
           'events',
