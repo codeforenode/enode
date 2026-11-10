@@ -4,10 +4,12 @@
 # 可选参数：
 #   -DryRun           只打印计划，不改文件、不提交、不推送
 #   -Version 1.4.1+4  直接指定版本号（省略构建号时自动取当前构建号 +1）
+#   -Proxy http://127.0.0.1:7890   GitHub 走代理；省略时自动读取系统代理
 #
-# 首次使用前需在公开仓添加 ANDROID_KEYSTORE_B64 Secret，见 README「一键发布」。
+# 首次使用前需在公开仓添加 ANDROID_KEYSTORE_B64 与 ANDROID_KEYSTORE_PASSWORD Secret，见 README「一键发布」。
 param(
     [string]$Version,
+    [string]$Proxy,
     [switch]$DryRun
 )
 
@@ -96,6 +98,34 @@ function Get-NextVersion([int[]]$Parts) {
     return ('{0}.{1}.{2}+{3}' -f $Parts[0], $Parts[1], ($Parts[2] + 1), ($Parts[3] + 1))
 }
 
+function Resolve-ProxyUrl([string]$Explicit) {
+    if (-not [string]::IsNullOrWhiteSpace($Explicit)) { return $Explicit.Trim() }
+    foreach ($name in @('HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy')) {
+        $value = [Environment]::GetEnvironmentVariable($name)
+        if (-not [string]::IsNullOrWhiteSpace($value)) { return $value.Trim() }
+    }
+    try {
+        $settings = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings' -ErrorAction Stop
+        if ($settings.ProxyEnable -eq 1 -and -not [string]::IsNullOrWhiteSpace($settings.ProxyServer)) {
+            $server = $settings.ProxyServer
+            if ($server -match '=') {
+                $match = [regex]::Match($server, '(?:^|;)(?:https?|socks)=([^;]+)')
+                if (-not $match.Success) { return $null }
+                $server = $match.Groups[1].Value
+            }
+            if ($server -notmatch '^\w+://') { $server = "http://$server" }
+            return $server
+        }
+    } catch {}
+    return $null
+}
+
+$proxyUrl = Resolve-ProxyUrl $Proxy
+$ghArgs = @()
+if ($proxyUrl) {
+    $ghArgs = @('-c', "http.https://github.com.proxy=$proxyUrl")
+}
+
 $versionBumped = $false
 $committed = $false
 
@@ -170,12 +200,17 @@ try {
 
     if (-not $DryRun) {
         Show-Step '同步公开仓'
-        try {
-            Invoke-Git @('-C', $repoRoot, 'fetch', 'public', 'main') | Out-Null
-        } catch {
-            throw "无法连接公开仓 GitHub（$publicRepo），请检查网络或代理后重试。`n$($_.Exception.Message)"
+        if ($proxyUrl) {
+            Show-Info "  代理：$proxyUrl"
+        } else {
+            Show-Info '  代理：未检测到，直连 GitHub'
         }
-        $remoteTags = @(Invoke-Git @('-C', $repoRoot, 'ls-remote', '--tags', 'public', "refs/tags/$tagName") | Where-Object { $_ })
+        try {
+            Invoke-Git (@('-C', $repoRoot) + $ghArgs + @('fetch', 'public', 'main')) | Out-Null
+        } catch {
+            throw "无法连接公开仓 GitHub（$publicRepo）。请确认代理已开启，或运行 release.bat -Proxy http://127.0.0.1:7890。`n$($_.Exception.Message)"
+        }
+        $remoteTags = @(Invoke-Git (@('-C', $repoRoot) + $ghArgs + @('ls-remote', '--tags', 'public', "refs/tags/$tagName")) | Where-Object { $_ })
         if ($remoteTags.Count -gt 0) {
             throw "公开仓已有标签 $tagName。若只是构建失败，请到 Actions 页点 Re-run；要改代码请提升版本号再发布。"
         }
@@ -192,6 +227,7 @@ try {
     Show-Info '  构建：GitHub Actions（Windows 安装版/便携版 + Android APK）'
     Show-Info "  公开仓：$publicRepo"
     Show-Info "  公开标签：$tagName"
+    Show-Info "  GitHub 代理：$(if ($proxyUrl) { $proxyUrl } else { '直连（可用 -Proxy 指定）' })"
 
     if ($DryRun) {
         Show-Step 'DryRun 结束'
@@ -254,7 +290,7 @@ try {
         $pending = @(Invoke-Git @('-C', $tmp, 'diff', '--cached', '--name-only', 'public/main') | Where-Object { $_ })
         if ($pending.Count -gt 0) {
             Invoke-Git @('-C', $tmp, '-c', "user.name=$publicName", '-c', "user.email=$publicMail", 'commit', '-m', "release: $tagName") | Out-Null
-            Invoke-Git @('-C', $tmp, 'push', 'public', 'HEAD:main') | Out-Null
+            Invoke-Git (@('-C', $tmp) + $ghArgs + @('push', 'public', 'HEAD:main')) | Out-Null
             Show-Info "  公开仓 main 已更新（$($pending.Count) 个文件）。"
         } else {
             Show-Info '  公开仓内容已一致，跳过提交。'
@@ -264,7 +300,7 @@ try {
         if ($exportTags.Count -eq 0) {
             Invoke-Git @('-C', $tmp, '-c', "user.name=$publicName", '-c', "user.email=$publicMail", 'tag', '-a', $tagName, '-m', "eNode $targetName") | Out-Null
         }
-        Invoke-Git @('-C', $tmp, 'push', 'public', "refs/tags/$tagName") | Out-Null
+        Invoke-Git (@('-C', $tmp) + $ghArgs + @('push', 'public', "refs/tags/$tagName")) | Out-Null
         Show-Info "  标签 $tagName 已推送。"
     } finally {
         $previous = $ErrorActionPreference
@@ -287,7 +323,7 @@ try {
     Show-Info "  Release：$publicUrl/releases/tag/$tagName"
     Show-Info '  通常 20-30 分钟；成功后三个安装包会自动出现在 Release 里。'
     Show-Warn '  若构建失败：看 Actions 日志修代码，然后提升版本号重新发布；同一个标签不要复用。'
-    Show-Warn '  Android 首次构建需要公开仓已添加 ANDROID_KEYSTORE_B64 Secret（见 README）。'
+    Show-Warn '  Android 首次构建需要公开仓已添加 ANDROID_KEYSTORE_B64 与 ANDROID_KEYSTORE_PASSWORD Secret（见 README）。'
     Start-Process $actionsUrl
     exit 0
 } catch {
