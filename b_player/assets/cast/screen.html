@@ -1,0 +1,609 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>eNode 屏幕</title>
+<style>
+  /* 底色由 screen.bg 写到 #screen 上；这里留透明，才让投放窗能透出桌面。 */
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: transparent; }
+  body { -webkit-user-select: none; cursor: default; }
+  #screen { position: absolute; inset: 0; overflow: hidden; }
+  .item { position: absolute; overflow: hidden; box-sizing: border-box; }
+  .item.lyric { display: flex; }
+  .ly { width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; box-sizing: border-box; }
+  .ly .meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; letter-spacing: .04em; }
+  .ly .rows { width: 100%; display: flex; flex-direction: column; }
+  .ly .row { display: flex; align-items: center; width: 100%; box-sizing: border-box; overflow: hidden; }
+  .ly .row > span { white-space: nowrap; display: block; }
+  /* 逐字扫光：底层整句暗色，顶层同字亮色，用 clip-path 从左到右揭开。 */
+  .ly .wline { white-space: nowrap; display: inline-block; }
+  .ly .w { position: relative; display: inline-block; white-space: pre; }
+  .ly .w > span { display: block; white-space: pre; }
+  .ly .w .kw { position: absolute; left: 0; top: 0; will-change: clip-path; }
+  .tx { box-sizing: border-box; }
+  .im, .vd { width: 100%; height: 100%; display: block; }
+  .wf { width: 100%; height: 100%; border: 0; display: block; background: #0b0e10; }
+  .ph { width: 100%; height: 100%; box-sizing: border-box; border: 1px dashed rgba(255,255,255,.18);
+        display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,.35);
+        font: 500 14px/1.4 "Microsoft YaHei", sans-serif; text-align: center; padding: 8px; }
+</style>
+</head>
+<body>
+<div id="screen"></div>
+<script>
+(function () {
+  'use strict';
+
+  var cfg = {
+    k: 1, w: 1920, h: 1080,
+    screen: null,
+    lines: [], title: '', artist: '', seat: '', durationMs: 0,
+    anchor: { positionMs: 0, wallMs: 0, playing: false }
+  };
+  var nodes = {};
+  var screenEl = document.getElementById('screen');
+
+  function num(v, d) { return typeof v === 'number' && isFinite(v) ? v : d; }
+  function str(v) { return v == null ? '' : String(v); }
+  function k() { return num(cfg.screen && cfg.screen.k, cfg.k) || 1; }
+
+  function positionMs() {
+    var a = cfg.anchor;
+    return a.playing ? Math.max(0, a.positionMs + (Date.now() - a.wallMs)) : Math.max(0, a.positionMs);
+  }
+
+  function indexAt(lines, ms) {
+    var idx = -1;
+    for (var i = 0; i < lines.length; i++) {
+      if (lines[i][0] > ms) break;
+      idx = i;
+    }
+    return idx;
+  }
+
+  // 一行的起止时间：没给行尾就取下一行的起点，最后一行兜底 4 秒。
+  function rowTimes(lines, i) {
+    var s = num(lines[i][0], 0);
+    var e = lines[i][2] != null ? num(lines[i][2], 0)
+        : (i + 1 < lines.length ? num(lines[i + 1][0], 0) : s + 4000);
+    return { s: s, e: e > s ? e : s + 4000 };
+  }
+
+  function rowsOf(lines, style) {
+    if (!lines.length) return [];
+    // 1 句只当前；2 句=当前+下一句；3 句及以上=上一句+当前+下一句。
+    var n = Math.max(1, num(style.lines, 2));
+    var before = n >= 3 ? 1 : 0;
+    var after = n === 1 ? 0 : 1;
+    var i = indexAt(lines, positionMs() + num(style.offsetMs, 0));
+    i = i < 0 ? 0 : Math.min(i, lines.length - 1);
+    var out = [];
+    for (var j = i - before; j <= i + after; j++) {
+      if (j >= 0 && j < lines.length) {
+        // 行 = [起点, 文本, 行尾?, 逐字?]，逐字 = [起点, 终点, 文本]。
+        var t = rowTimes(lines, j);
+        out.push({ t: str(lines[j][1]), c: j === i, i: j, w: lines[j][3] || null, s: t.s, e: t.e });
+      }
+    }
+    return out;
+  }
+
+  function metaText(style) {
+    var parts = [];
+    if (style.showTitle && str(cfg.title).trim()) parts.push(str(cfg.title).trim());
+    if (style.showArtist && str(cfg.artist).trim()) parts.push(str(cfg.artist).trim());
+    if (style.showSeat && str(cfg.seat).trim()) parts.push(str(cfg.seat).trim());
+    return parts.join(' · ');
+  }
+
+  function styleFont(el, size, weight, family, colorValue, style) {
+    var kk = k();
+    el.style.fontFamily = str(family) || 'sans-serif';
+    el.style.fontSize = size + 'px';
+    el.style.fontWeight = String(weight || 600);
+    el.style.color = colorValue;
+    el.style.letterSpacing = (size * 0.01) + 'px';
+    var sw = num(style.strokeWidth, 0) * kk * 2;
+    el.style.webkitTextStrokeWidth = sw > 0.5 ? sw + 'px' : '0';
+    el.style.webkitTextStrokeColor = '#000';
+    el.style.paintOrder = 'stroke fill';
+    el.style.textShadow = style.shadow ? '0 ' + (3 * kk) + 'px ' + (10 * kk) + 'px rgba(0,0,0,0.7)' : 'none';
+  }
+
+  // 附加信息（歌名/歌手）放不下就等比缩字号；歌词行不缩，超宽靠横向滚动。
+  function fitSpan(span, avail) {
+    var w = span.scrollWidth;
+    if (w > avail && w > 0) {
+      var size = parseFloat(span.style.fontSize) * avail / w;
+      span.style.fontSize = size + 'px';
+      span.style.letterSpacing = (size * 0.01) + 'px';
+    }
+  }
+
+  function alignOf(style) {
+    return style.align === 'left' ? 'flex-start' : style.align === 'right' ? 'flex-end' : 'center';
+  }
+
+  // ---------- 节点 ----------
+
+  function buildLyric(el) {
+    var ly = document.createElement('div');
+    ly.className = 'ly';
+    var meta = document.createElement('div');
+    meta.className = 'meta';
+    var rows = document.createElement('div');
+    rows.className = 'rows';
+    ly.appendChild(meta);
+    ly.appendChild(rows);
+    el.appendChild(ly);
+    return { ly: ly, meta: meta, rows: rows, rowEls: [] };
+  }
+
+  function buildText(el) {
+    var tx = document.createElement('div');
+    tx.className = 'tx';
+    el.appendChild(tx);
+    el.style.display = 'flex';
+    el.style.alignItems = 'center';
+    return { tx: tx };
+  }
+
+  function buildImage(el) {
+    var img = document.createElement('img');
+    img.className = 'im';
+    el.appendChild(img);
+    return { img: img };
+  }
+
+  // 同一节点只保留一个子元素：素材从空到有、从图片换成影片时都不留旧画面。
+  function attach(el, child) {
+    if (el.firstChild !== child) el.replaceChildren(child);
+  }
+
+  function buildVideo(el) {
+    var v = document.createElement('video');
+    v.className = 'vd';
+    v.setAttribute('playsinline', '');
+    v.setAttribute('preload', 'auto');
+    el.appendChild(v);
+    return { video: v };
+  }
+
+  function buildUrl(el) {
+    var f = document.createElement('iframe');
+    f.className = 'wf';
+    f.setAttribute('scrolling', 'no');
+    f.setAttribute('referrerpolicy', 'no-referrer');
+    el.appendChild(f);
+    return { frame: f, timer: null, loaded: '' };
+  }
+
+  function makeNode(it) {
+    var el = document.createElement('div');
+    el.className = 'item ' + it.t;
+    var node = { kind: it.t, el: el, item: it };
+    if (it.t === 'lyric') node.lyric = buildLyric(el);
+    else if (it.t === 'text') node.text = buildText(el);
+    else if (it.t === 'image') node.image = buildImage(el);
+    else if (it.t === 'video') node.video = buildVideo(el);
+    else if (it.t === 'url') node.url = buildUrl(el);
+    else node.ph = buildPlaceholder(el, '');
+    screenEl.appendChild(el);
+    return node;
+  }
+
+  function removeNode(node) {
+    if (node.url && node.url.timer) clearInterval(node.url.timer);
+    if (node.video && node.video.video) {
+      try { node.video.video.pause(); } catch (e) {}
+    }
+    if (node.el.parentNode) node.el.parentNode.removeChild(node.el);
+  }
+
+  function layoutNode(node) {
+    var it = node.item, el = node.el;
+    el.style.left = (num(it.x, 0) * 100) + '%';
+    el.style.top = (num(it.y, 0) * 100) + '%';
+    el.style.width = (num(it.w, 1) * 100) + '%';
+    el.style.height = (num(it.h, 1) * 100) + '%';
+    el.style.opacity = String(num(it.op, 1));
+    el.style.zIndex = String(num(it.z, 1));
+    // 文字素材需要 flex 才能在框内垂直居中；其余素材都是铺满的块。
+    el.style.display = node.kind === 'text' ? 'flex' : 'block';
+    var r = num(it.r, 0) * k();
+    el.style.borderRadius = r > 0 ? r + 'px' : '0';
+  }
+
+  // ---------- 各类素材 ----------
+
+  function renderLyric(node) {
+    var style = node.item.style || {};
+    node.lyric.offset = num(style.offsetMs, 0);
+    node.lyric.index = indexAt(cfg.lines, positionMs() + node.lyric.offset);
+    var W = node.el.clientWidth, H = node.el.clientHeight;
+    if (!W || !H) return;
+    var kk = k();
+    var pad = Math.min(20 * kk, W * 0.05);
+    var avail = Math.max(1, W - pad * 2);
+    var rows = rowsOf(cfg.lines, style);
+    var meta = metaText(style);
+    var base = num(style.fontSize, 88) * kk;
+    var gap = num(style.lineGap, 0) * kk;
+    var sx = Math.max(0.4, Math.min(2, num(style.textWidth, 100) / 100));
+    var sy = Math.max(0.4, Math.min(2, num(style.textHeight, 100) / 100));
+
+    // 字高拉长时行高跟着长，行间距始终是额外的空白。
+    function rowHFor(fs) {
+      return Math.max(fs * 1.5, fs * 1.2 * sy) + gap;
+    }
+    // 字号固定为用户设置值：超宽不缩字，当前句跟随演唱向左滚，其余行从左侧裁切。
+    var fs = base;
+    var otherOpacity = Math.max(0, Math.min(1, num(style.otherOpacity, 100) / 100));
+
+    var ly = node.lyric;
+    ly.scrollPair = null;
+    ly.ly.style.padding = '0 ' + pad + 'px';
+
+    if (meta) {
+      ly.meta.style.display = 'block';
+      styleFont(ly.meta, fs * 0.34, 500, style.fontFamily, style.otherColorCss || '#8B979F', style);
+      if (ly.meta.textContent !== meta) ly.meta.textContent = meta;
+      ly.meta.style.textAlign = style.align || 'center';
+      fitSpan(ly.meta, avail);
+      ly.meta.style.marginBottom = (6 * kk) + 'px';
+    } else {
+      ly.meta.style.display = 'none';
+    }
+
+    while (ly.rowEls.length < rows.length) {
+      var row = document.createElement('div');
+      row.className = 'row';
+      var span = document.createElement('span');
+      span.className = 'line';
+      row.appendChild(span);
+      ly.rows.appendChild(row);
+      ly.rowEls.push({ row: row, span: span, mode: '', text: '', wordKey: '', cells: [] });
+    }
+    var cells = [];
+    for (var j = 0; j < ly.rowEls.length; j++) {
+      var pair = ly.rowEls[j];
+      if (j >= rows.length) { pair.row.style.display = 'none'; continue; }
+      pair.row.style.display = 'flex';
+      pair.row.style.height = rowHFor(fs) + 'px';
+      var r = rows[j];
+      // 非当前句整行淡出（含描边/阴影）；当前句与附加信息保持原样。
+      pair.row.style.opacity = r.c ? '1' : String(otherOpacity);
+      var wordList = r.c && r.w && r.w.length ? r.w : null;
+      if (wordList) {
+        // 当前句有逐字时间：底层暗色整句 + 顶层亮色逐字揭开。
+        var wordKey = r.i + '#' + wordList.length + '#' + num(wordList[0][0], 0)
+            + '#' + num(wordList[wordList.length - 1][1], 0);
+        if (pair.mode !== 'words' || pair.wordKey !== wordKey) {
+          pair.span.textContent = '';
+          var line = document.createElement('span');
+          line.className = 'wline';
+          pair.cells = [];
+          for (var w = 0; w < wordList.length; w++) {
+            var cell = document.createElement('span');
+            cell.className = 'w';
+            var wbase = document.createElement('span');
+            wbase.className = 'wb';
+            var fill = document.createElement('span');
+            fill.className = 'kw';
+            var wordText = str(wordList[w][2]);
+            wbase.textContent = wordText;
+            fill.textContent = wordText;
+            cell.appendChild(wbase);
+            cell.appendChild(fill);
+            line.appendChild(cell);
+            pair.cells.push({ fill: fill, start: num(wordList[w][0], 0), end: num(wordList[w][1], 0) });
+          }
+          pair.span.appendChild(line);
+          pair.mode = 'words';
+          pair.text = r.t;
+          pair.wordKey = wordKey;
+        }
+        styleFont(pair.span, fs, num(style.fontWeight, 600), style.fontFamily,
+          style.otherColorCss || '#8B979F', style);
+        for (var c = 0; c < pair.cells.length; c++) {
+          pair.cells[c].fill.style.color = style.currentColorCss || '#3DDC84';
+        }
+        cells = pair.cells;
+      } else {
+        if (pair.mode !== 'text' || pair.text !== r.t) {
+          pair.span.textContent = r.t;
+          pair.mode = 'text';
+          pair.text = r.t;
+          pair.cells = [];
+        }
+        styleFont(pair.span, fs, num(style.fontWeight, 600), style.fontFamily,
+          r.c ? (style.currentColorCss || '#3DDC84') : (style.otherColorCss || '#8B979F'), style);
+      }
+      // 量真实占用宽度（含横向拉伸）：超宽就左对齐 + 跟随当前句滚动，绝不缩字号。
+      // 用 offsetWidth 量布局宽度，getBoundingClientRect 会把上一帧的位移也算进去。
+      var layoutW = pair.span.offsetWidth;
+      var over = layoutW * sx > avail + 0.5;
+      pair.over = over;
+      pair.w = layoutW * sx;
+      pair.sx = sx;
+      pair.sy = sy;
+      pair.start = r.s;
+      pair.end = r.e;
+      if (over) {
+        pair.row.style.justifyContent = 'flex-start';
+        pair.span.style.transformOrigin = 'left center';
+        // 非当前行不滚：清掉上一句留下的位移，当前行随后由 applyScroll 接管。
+        pair.span.style.transform = 'translateX(0px) scale(' + sx + ',' + sy + ')';
+      } else {
+        pair.row.style.justifyContent = alignOf(style);
+        // 只拉伸字形，不改变布局宽度；对齐点跟着文字方向走，左右不跑位。
+        pair.span.style.transformOrigin =
+          style.align === 'left' ? 'left center' : style.align === 'right' ? 'right center' : 'center center';
+        pair.span.style.transform = (sx !== 1 || sy !== 1) ? 'scale(' + sx + ',' + sy + ')' : 'none';
+      }
+      // 逐字横向位置缓存成 span 内的设计像素，滚动时不再逐帧测布局。
+      if (over && pair.cells.length) {
+        var sr = pair.span.getBoundingClientRect();
+        for (var c = 0; c < pair.cells.length; c++) {
+          var cr = pair.cells[c].fill.getBoundingClientRect();
+          pair.cells[c].x0 = (cr.left - sr.left) / sx;
+          pair.cells[c].x1 = (cr.right - sr.left) / sx;
+        }
+      }
+      if (r.c) ly.scrollPair = pair;
+    }
+    ly.cells = cells;
+    ly.avail = avail;
+    applyScroll(node, ly.scrollPair, positionMs() + ly.offset);
+  }
+
+  // 超宽行的横向位移：把唱到的横向位置保持在可视区约 65% 处，两端夹住。
+  function scrollOffset(textWidth, avail, focus) {
+    var max = Math.max(0, textWidth - avail);
+    var value = focus - avail * 0.65;
+    return value <= 0 ? 0 : value >= max ? max : value;
+  }
+
+  // 当前句跟着演唱走：逐字行取唱到的字，整行行按时间比例推进。
+  function applyScroll(node, pair, shifted) {
+    if (!pair || !pair.over) return;
+    var avail = node.lyric.avail || 0;
+    var focus;
+    if (pair.cells && pair.cells.length) {
+      var cs = pair.cells;
+      var active = cs[cs.length - 1];
+      for (var c = 0; c < cs.length; c++) {
+        if (shifted < cs[c].end) { active = cs[c]; break; }
+      }
+      var p = active.end > active.start ? (shifted - active.start) / (active.end - active.start) : 1;
+      p = p < 0 ? 0 : p > 1 ? 1 : p;
+      focus = (active.x0 + (active.x1 - active.x0) * p) * pair.sx;
+    } else {
+      var span = pair.end > pair.start ? pair.end - pair.start : 1;
+      var q = (shifted - pair.start) / span;
+      q = q < 0 ? 0 : q > 1 ? 1 : q;
+      focus = pair.w * q;
+    }
+    pair.shift = scrollOffset(pair.w, avail, focus);
+    pair.span.style.transform =
+      'translateX(' + (-pair.shift).toFixed(2) + 'px) scale(' + pair.sx + ',' + pair.sy + ')';
+  }
+
+  // 逐字扫光是唯一逐帧变化的东西：整屏结构仍按 200ms 刷，这里只改 clip-path。
+  function updateKaraoke() {
+    var ms = positionMs();
+    for (var id in nodes) {
+      if (!Object.prototype.hasOwnProperty.call(nodes, id)) continue;
+      var node = nodes[id];
+      if (node.kind !== 'lyric' || !node.lyric) continue;
+      var ly = node.lyric;
+      var shifted = ms + num(ly.offset, 0);
+      var index = indexAt(cfg.lines, shifted);
+      if (index !== ly.index) {
+        renderLyric(node); // 换句立刻重建，不等下一轮整屏刷新
+        continue;
+      }
+      var cells = ly.cells || [];
+      for (var i = 0; i < cells.length; i++) {
+        var w = cells[i];
+        var p = w.end > w.start
+          ? (shifted - w.start) / (w.end - w.start)
+          : (shifted >= w.start ? 1 : 0);
+        p = p < 0 ? 0 : p > 1 ? 1 : p;
+        w.fill.style.clipPath = 'inset(0 ' + ((1 - p) * 100).toFixed(2) + '% 0 0)';
+      }
+      applyScroll(node, ly.scrollPair, shifted);
+    }
+  }
+
+  function renderText(node) {
+    var it = node.item, W = node.el.clientWidth, H = node.el.clientHeight;
+    var tx = node.text.tx;
+    tx.textContent = str(it.text);
+    tx.style.width = '100%';
+    tx.style.textAlign = it.align || 'center';
+    tx.style.whiteSpace = 'pre-wrap';
+    tx.style.lineHeight = '1.25';
+    tx.style.fontFamily = str(it.font) || 'Microsoft YaHei';
+    tx.style.fontWeight = String(num(it.weight, 600));
+    tx.style.color = str(it.color) || '#E8EDF1';
+    tx.style.textShadow = it.shadow ? '0 ' + (3 * k()) + 'px ' + (10 * k()) + 'px rgba(0,0,0,.7)' : 'none';
+    var fs = Math.max(5, num(it.size, 56) * k());
+    tx.style.fontSize = fs + 'px';
+    // 两轮量一遍：内容超出框就等比缩，宁可字小也别裁掉。
+    for (var i = 0; i < 3 && W && H; i++) {
+      var overH = tx.scrollHeight > H && tx.scrollHeight > 0 ? H / tx.scrollHeight : 1;
+      var overW = tx.scrollWidth > W && tx.scrollWidth > 0 ? W / tx.scrollWidth : 1;
+      var ratio = Math.min(1, overH, overW);
+      if (ratio > 0.999) break;
+      fs = fs * ratio;
+      tx.style.fontSize = fs + 'px';
+    }
+  }
+
+  function renderImage(node) {
+    var it = node.item, img = node.image.img;
+    var src = str(it.src);
+    if (!src) { node.el.replaceChildren(); return; }
+    attach(node.el, img);
+    img.style.objectFit = it.fit === 'contain' ? 'contain' : it.fit === 'stretch' ? 'fill' : 'cover';
+    img.style.borderRadius = 'inherit';
+    if (img.getAttribute('src') !== src) {
+      img.onerror = function () { img.style.visibility = 'hidden'; };
+      img.onload = function () { img.style.visibility = 'visible'; };
+      img.setAttribute('src', src);
+    }
+  }
+
+  function renderVideo(node) {
+    var it = node.item, v = node.video.video;
+    var src = str(it.src);
+    if (!src) { node.el.replaceChildren(); try { v.pause(); } catch (e) {} return; }
+    attach(node.el, v);
+    v.style.objectFit = it.fit === 'contain' ? 'contain' : it.fit === 'stretch' ? 'fill' : 'cover';
+    v.style.borderRadius = 'inherit';
+    v.loop = it.loop !== false;
+    v.muted = it.snd !== true;
+    v.volume = Math.max(0, Math.min(1, num(it.vol, 60) / 100));
+    if (v.getAttribute('src') !== src) v.setAttribute('src', src);
+    if (it.auto !== false) {
+      var p = v.play();
+      if (p && p.catch) p.catch(function () {});
+    }
+  }
+
+  function renderUrl(node) {
+    var it = node.item, f = node.url.frame;
+    var src = str(it.url);
+    if (!src) {
+      node.el.replaceChildren();
+      if (node.url.timer) { clearInterval(node.url.timer); node.url.timer = null; }
+      return;
+    }
+    attach(node.el, f);
+    // rev 变换 = 用户在设置页点了「重新载入」：同一条网址也要丢掉旧 document 再拉一次。
+    if (node.url.loaded !== src || node.url.loadedRev !== num(it.rev, 0)) {
+      node.url.loaded = src;
+      node.url.loadedRev = num(it.rev, 0);
+      f.setAttribute('src', src);
+      if (node.url.timer) clearInterval(node.url.timer);
+      var sec = num(it.refresh, 0);
+      node.url.timer = sec > 0 ? setInterval(function () {
+        try { f.setAttribute('src', src); } catch (e) {}
+      }, sec * 1000) : null;
+    }
+  }
+
+  function renderNode(node) {
+    layoutNode(node);
+    if (node.kind === 'lyric') renderLyric(node);
+    else if (node.kind === 'text') renderText(node);
+    else if (node.kind === 'image') renderImage(node);
+    else if (node.kind === 'video') renderVideo(node);
+    else if (node.kind === 'url') renderUrl(node);
+  }
+
+  function renderAll() {
+    for (var id in nodes) if (Object.prototype.hasOwnProperty.call(nodes, id)) {
+      var n = nodes[id];
+      if (n.kind === 'lyric') renderLyric(n);
+    }
+  }
+
+  // ---------- 应用一屏的构图 ----------
+
+  function applyScreen(screen) {
+    cfg.screen = screen;
+    screenEl.style.background = str(screen.bg) || '#000';
+    var seen = {};
+    var items = (screen.items || []).slice();
+    items.sort(function (a, b) { return num(a.z, 1) - num(b.z, 1); });
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i];
+      if (!it || !it.id) continue;
+      seen[it.id] = true;
+      var node = nodes[it.id];
+      if (node && node.kind !== it.t) {
+        removeNode(node);
+        node = null;
+      }
+      if (!node) {
+        node = makeNode(it);
+        nodes[it.id] = node;
+      }
+      node.item = it;
+      renderNode(node);
+    }
+    for (var id in nodes) {
+      if (Object.prototype.hasOwnProperty.call(nodes, id) && !seen[id]) {
+        removeNode(nodes[id]);
+        delete nodes[id];
+      }
+    }
+  }
+
+  // 歌词颜色在 Dart 侧已经转成 CSS；这里补一层兜底，兼容老缓存。
+  function withCssColors(style) {
+    if (!style) return style;
+    var out = {};
+    for (var kk in style) if (Object.prototype.hasOwnProperty.call(style, kk)) out[kk] = style[kk];
+    out.currentColorCss = str(style.currentColorCss) || cssColor(style.currentColor, '#3DDC84');
+    out.otherColorCss = str(style.otherColorCss) || cssColor(style.otherColor, '#8B979F');
+    return out;
+  }
+
+  function cssColor(argb, d) {
+    if (typeof argb !== 'number') return d;
+    var r = (argb >> 16) & 0xFF, g = (argb >> 8) & 0xFF, b = argb & 0xFF;
+    return 'rgb(' + r + ',' + g + ',' + b + ')';
+  }
+
+  window.enodeScreen = {
+    apply: function (next) {
+      if (!next || typeof next !== 'object') return;
+      if (next.geometry) {
+        cfg.k = num(next.geometry.k, cfg.k);
+        cfg.w = num(next.geometry.w, cfg.w);
+        cfg.h = num(next.geometry.h, cfg.h);
+      }
+      if (next.lines) cfg.lines = next.lines;
+      if (next.nowPlaying) {
+        cfg.title = str(next.nowPlaying.title);
+        cfg.artist = str(next.nowPlaying.artist);
+        cfg.seat = str(next.nowPlaying.seat);
+        cfg.durationMs = num(next.nowPlaying.durationMs, 0);
+      }
+      if (next.tick) {
+        cfg.anchor = {
+          positionMs: num(next.tick.positionMs, 0),
+          wallMs: num(next.tick.wallMs, Date.now()),
+          playing: !!next.tick.playing
+        };
+      }
+      if (next.screen) {
+        var s = next.screen;
+        s.items = (s.items || []).map(function (it) {
+          if (it.t === 'lyric' && it.style) it.style = withCssColors(it.style);
+          return it;
+        });
+        applyScreen(s);
+      }
+      renderAll();
+    },
+    ready: true
+  };
+
+  window.addEventListener('message', function (e) {
+    var data = e.data;
+    if (data && data.enode) window.enodeScreen.apply(data.enode);
+  });
+
+  setInterval(function () { renderAll(); }, 200);
+  requestAnimationFrame(function frame() {
+    updateKaraoke();
+    requestAnimationFrame(frame);
+  });
+})();
+</script>
+</body>
+</html>

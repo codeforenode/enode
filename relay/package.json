@@ -1,0 +1,13 @@
+{
+  "name": "kj-relay",
+  "version": "0.1.0",
+  "private": true,
+  "description": "绿地方案点歌中继：只存快照并转发 search/enqueue",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "mqtt": "^5.10.3"
+  }
+}

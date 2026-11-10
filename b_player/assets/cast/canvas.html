@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>eNode 屏幕管理</title>
+<style>
+  /* 一块 canvas 画 N 屏：每块屏一个 iframe，摆在自己的像素位置上。
+     每屏的素材构图不同，但歌词与时钟锚点是同一份，画面因此天然同帧。 */
+  /* 画布本身必须透明：每屏底色由 screen.bg 决定，页面的黑底会挡住桌面的透出。 */
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
+  iframe { position: absolute; left: 0; top: 0; border: 0; display: block; background: transparent; }
+</style>
+</head>
+<body>
+<script>
+(function () {
+  'use strict';
+
+  var entries = [];
+  var last = { lines: null, nowPlaying: null, tick: null };
+
+  function payload() {
+    var p = {};
+    if (last.lines) p.lines = last.lines;
+    if (last.nowPlaying) p.nowPlaying = last.nowPlaying;
+    if (last.tick) p.tick = last.tick;
+    return p;
+  }
+
+  function send(entry, sections) {
+    if (!entry.el.contentWindow) return;
+    var out = {};
+    for (var k in sections) {
+      if (Object.prototype.hasOwnProperty.call(sections, k)) out[k] = sections[k];
+    }
+    out.geometry = entry.geom;
+    entry.el.contentWindow.postMessage({ enode: out }, '*');
+  }
+
+  // 新 iframe 起来 / 构图变化时，把这一屏需要的状态整份重放。
+  function replay(entry) {
+    if (!entry.ready) return;
+    var p = payload();
+    if (entry.screen) p.screen = entry.screen;
+    send(entry, p);
+  }
+
+  function makeEntry() {
+    var el = document.createElement('iframe');
+    el.setAttribute('src', 'screen.html');
+    el.setAttribute('scrolling', 'no');
+    var entry = { el: el, geom: null, screen: null, ready: false };
+    el.addEventListener('load', function () {
+      entry.ready = true;
+      replay(entry);
+    });
+    document.body.appendChild(el);
+    return entry;
+  }
+
+  window.enodeCanvas = {
+    // 布局：items = [{x,y,w,h,k}]，坐标是画布像素；屏数变少时收掉多余的 iframe。
+    layout: function (items) {
+      if (!items || typeof items.length !== 'number') return;
+      while (entries.length > items.length) {
+        var gone = entries.pop();
+        if (gone.el.parentNode) gone.el.parentNode.removeChild(gone.el);
+      }
+      for (var i = 0; i < items.length; i++) {
+        var it = items[i];
+        if (!entries[i]) entries[i] = makeEntry();
+        var entry = entries[i];
+        entry.geom = { k: it.k, w: it.w, h: it.h };
+        entry.el.style.left = it.x + 'px';
+        entry.el.style.top = it.y + 'px';
+        entry.el.style.width = it.w + 'px';
+        entry.el.style.height = it.h + 'px';
+        if (entry.screen) replay(entry);
+      }
+    },
+    // 构图：screens = [{id, k, bg, items:[...]}]，顺序与 layout 一致。
+    compose: function (screens) {
+      if (!screens || typeof screens.length !== 'number') return;
+      for (var i = 0; i < entries.length && i < screens.length; i++) {
+        entries[i].screen = screens[i];
+        replay(entries[i]);
+      }
+    },
+    // 推送：歌词 / 当前曲 / 锚点，缺哪段页面就保留上一份。
+    push: function (p) {
+      if (!p || typeof p !== 'object') return;
+      if (p.lines) last.lines = p.lines;
+      if (p.nowPlaying) last.nowPlaying = p.nowPlaying;
+      if (p.tick) last.tick = p.tick;
+      for (var i = 0; i < entries.length; i++) {
+        if (entries[i].ready) send(entries[i], p);
+      }
+    }
+  };
+})();
+</script>
+</body>
+</html>
