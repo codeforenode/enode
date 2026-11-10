@@ -6,6 +6,7 @@ import 'dart:ui';
 import 'package:flutter_chromium_webview/flutter_chromium_webview.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../l10n/l10n.dart';
 import '../state/cast_settings.dart';
 import '../state/lrc.dart';
 
@@ -103,6 +104,7 @@ Map<String, Object?> castWebLyric(
   String? artist,
   String? seat,
   int durationMs = 0,
+  bool hasTrack = false,
 }) =>
     {
       // 行 = [起点, 文本, 行尾, 逐字?]；逐字 = [起点, 终点, 文本]，空行省掉最后一段。
@@ -118,11 +120,14 @@ Map<String, Object?> castWebLyric(
               ],
           ],
       ],
+      // 无歌词时页面显示的占位文案；有曲目才显示，待机态保持空白。
+      'noLyrics': l10n.castNoLyrics,
       'nowPlaying': {
         'title': title ?? '',
         'artist': artist ?? '',
         'seat': seat ?? '',
         'durationMs': durationMs,
+        'hasTrack': hasTrack,
       },
     };
 

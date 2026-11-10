@@ -481,6 +481,9 @@ class AppL10nEn extends AppL10n {
   String get noLyrics => 'No lyrics';
 
   @override
+  String get castNoLyrics => 'No lyrics';
+
+  @override
   String get onlineLibrary => 'Online library';
 
   @override

@@ -18,12 +18,12 @@ const _style = CastStyle(
   showArtist: false,
 );
 
-final _lines = <LyricLine>[
+const _lines = <LyricLine>[
   (
     startMs: 0,
     endMs: 2000,
     text: 'ABC',
-    words: const [
+    words: [
       (startMs: 400, endMs: 900, text: 'A'),
       (startMs: 900, endMs: 1400, text: 'B'),
       (startMs: 1400, endMs: 1900, text: 'C'),
@@ -31,7 +31,12 @@ final _lines = <LyricLine>[
   ),
 ];
 
-Future<({int current, int other})> _paint(WidgetTester tester, int positionMs) async {
+Future<({int current, int other})> _paint(
+  WidgetTester tester,
+  int positionMs, {
+  List<LyricLine> lines = _lines,
+  String placeholder = '',
+}) async {
   final key = GlobalKey();
   await tester.pumpWidget(
     MediaQuery(
@@ -46,9 +51,10 @@ Future<({int current, int other})> _paint(WidgetTester tester, int positionMs) a
               style: _style,
               box: const Size(600, 160),
               scale: 1,
-              lines: _lines,
+              lines: lines,
               index: 0,
               positionMs: positionMs,
+              placeholder: placeholder,
             ),
           ),
         ),
@@ -93,6 +99,27 @@ void main() {
 
     test('最后一句没有下一句时只留当前句', () {
       expect(texts(const CastStyle(lines: 2), 2), ['下一句']);
+    });
+
+    test('没有歌词时占位只出一行、按非当前句样式', () {
+      final rows = castLyricRows(const CastStyle(), const [], -1, placeholder: '暂无歌词');
+      expect(rows.map((r) => r.text), ['暂无歌词']);
+      expect(rows.single.current, false);
+      expect(castLyricRows(const CastStyle(), const [], -1), isEmpty);
+    });
+  });
+
+  group('无歌词占位', () {
+    testWidgets('有曲目没歌词时画出占位文案', (tester) async {
+      final painted = await _paint(tester, 0, lines: const [], placeholder: '暂无歌词');
+      expect(painted.other, greaterThan(0));
+      expect(painted.current, 0);
+    });
+
+    testWidgets('待机态没有占位，也不画任何字', (tester) async {
+      final painted = await _paint(tester, 0, lines: const []);
+      expect(painted.other, 0);
+      expect(painted.current, 0);
     });
   });
 

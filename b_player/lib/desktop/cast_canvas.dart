@@ -168,8 +168,15 @@ class CastCanvas {
     String? artist,
     String? seat,
     int durationMs = 0,
+    bool hasTrack = false,
   }) async {
-    _lyric = castWebLyric(lines, title: title, artist: artist, seat: seat, durationMs: durationMs);
+    _lyric = castWebLyric(
+        lines,
+        title: title,
+        artist: artist,
+        seat: seat,
+        durationMs: durationMs,
+        hasTrack: hasTrack);
     await _push(_lyric!);
   }
 

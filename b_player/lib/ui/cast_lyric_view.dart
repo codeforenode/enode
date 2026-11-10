@@ -25,12 +25,16 @@ class CastLyricView extends StatelessWidget {
     this.seat,
     this.positionMs = 0,
     this.durationMs = 0,
+    this.placeholder = '',
   });
 
   final CastStyle style;
   final Size design;
   final double ratio;
   final List<LyricLine> lines;
+
+  /// 有曲目但没有歌词时显示的一行占位；空串表示待机态不显示。
+  final String placeholder;
 
   /// 当前句下标；<0（前奏）时按第一句显示。
   final int index;
@@ -80,15 +84,21 @@ class CastLyricView extends StatelessWidget {
     return parts.join(' · ');
   }
 
-  List<LyricRow> _rows() => castLyricRows(style, lines, index);
+  List<LyricRow> _rows() => castLyricRows(style, lines, index, placeholder: placeholder);
 }
 
 /// 一行歌词的绘制数据：文本、是否当前句、逐字时间（没有逐字时为空）。
 typedef LyricRow = ({String text, bool current, List<LyricWord> words, int startMs, int endMs});
 
 /// 1 句只当前；2 句=当前+下一句；3 句及以上=上一句+当前+下一句。
-List<LyricRow> castLyricRows(CastStyle style, List<LyricLine> lines, int index) {
-  if (lines.isEmpty) return const [];
+/// [placeholder] 只在完全没有歌词时给出一行非当前句样式的占位。
+List<LyricRow> castLyricRows(CastStyle style, List<LyricLine> lines, int index,
+    {String placeholder = ''}) {
+  if (lines.isEmpty) {
+    return placeholder.isEmpty
+        ? const []
+        : [(text: placeholder, current: false, words: const <LyricWord>[], startMs: 0, endMs: 0)];
+  }
   final before = style.lines >= 3 ? 1 : 0;
   final after = style.lines == 1 ? 0 : 1;
   final i = index < 0 ? 0 : math.min(index, lines.length - 1);
@@ -133,6 +143,7 @@ class CastLyricLayer extends StatelessWidget {
     this.meta = '',
     this.positionMs = 0,
     this.durationMs = 0,
+    this.placeholder = '',
   });
 
   final CastStyle style;
@@ -143,6 +154,9 @@ class CastLyricLayer extends StatelessWidget {
   final List<LyricLine> lines;
   final int index;
   final String meta;
+
+  /// 有曲目但没有歌词时显示的一行占位；空串表示待机态不显示。
+  final String placeholder;
   final int positionMs;
   final int durationMs;
 
@@ -154,7 +168,7 @@ class CastLyricLayer extends StatelessWidget {
             style: style,
             box: box,
             scale: scale,
-            rows: castLyricRows(style, lines, index),
+            rows: castLyricRows(style, lines, index, placeholder: placeholder),
             meta: meta,
             positionMs: positionMs,
             durationMs: durationMs,

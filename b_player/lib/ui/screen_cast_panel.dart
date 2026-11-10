@@ -1360,6 +1360,7 @@ class _ScreenCastPanelState extends State<ScreenCastPanel> {
           meta: _lyricMeta(t, style),
           positionMs: _positionMs,
           durationMs: _durationMs,
+          placeholder: widget.state.nowPlaying != null ? t.castNoLyrics : '',
         );
       case CastMaterialType.text:
         final color = Color(m.color);

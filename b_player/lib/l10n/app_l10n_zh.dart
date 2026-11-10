@@ -466,6 +466,9 @@ class AppL10nZh extends AppL10n {
   String get noLyrics => '沒有歌詞';
 
   @override
+  String get castNoLyrics => '暫無歌詞';
+
+  @override
   String get onlineLibrary => '線上曲庫';
 
   @override
@@ -2387,6 +2390,9 @@ class AppL10nZhHans extends AppL10nZh {
 
   @override
   String get noLyrics => '没有歌词';
+
+  @override
+  String get castNoLyrics => '暂无歌词';
 
   @override
   String get onlineLibrary => '在线曲库';
@@ -4311,6 +4317,9 @@ class AppL10nZhHant extends AppL10nZh {
 
   @override
   String get noLyrics => '沒有歌詞';
+
+  @override
+  String get castNoLyrics => '暫無歌詞';
 
   @override
   String get onlineLibrary => '線上曲庫';

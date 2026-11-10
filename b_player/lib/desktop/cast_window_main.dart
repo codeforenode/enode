@@ -161,6 +161,7 @@ class CastWindowModel extends ChangeNotifier {
   String? artist;
   String? seat;
   int durationMs = 0;
+  bool hasTrack = false;
 
   int _anchorPos = 0;
   int _anchorWall = 0;
@@ -207,6 +208,7 @@ class CastWindowModel extends ChangeNotifier {
         artist = a['artist'] as String?;
         seat = a['seat'] as String?;
         durationMs = (a['durationMs'] as num?)?.toInt() ?? 0;
+        hasTrack = a['hasTrack'] == true;
         lyricRev++;
       case 'tick':
         // 每次 tick 都是权威位置 + 当时的墙钟，直接重设锚点即可纠偏；主 isolate 一秒推一次。
@@ -326,7 +328,10 @@ class _CastWindowViewState extends State<CastWindowView> {
     }
     if (m.lyricRev != _lyricRev || _lyricRev < 0) {
       _lyricRev = m.lyricRev;
-      _push(controller, castWebLyric(m.lines, title: m.title, artist: m.artist, seat: m.seat, durationMs: m.durationMs));
+      _push(
+          controller,
+          castWebLyric(m.lines,
+              title: m.title, artist: m.artist, seat: m.seat, durationMs: m.durationMs, hasTrack: m.hasTrack));
     }
     if (m.tickRev != _tickRev || _tickRev < 0) {
       _tickRev = m.tickRev;
@@ -393,6 +398,7 @@ class _CastWindowViewState extends State<CastWindowView> {
           seat: widget.model.seat,
           positionMs: widget.model.positionMs,
           durationMs: widget.model.durationMs,
+          placeholder: widget.model.hasTrack ? l10n.castNoLyrics : '',
         ),
       );
 }

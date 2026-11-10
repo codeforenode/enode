@@ -17,13 +17,14 @@
   'use strict';
 
   var entries = [];
-  var last = { lines: null, nowPlaying: null, tick: null };
+  var last = { lines: null, nowPlaying: null, tick: null, noLyrics: null };
 
   function payload() {
     var p = {};
     if (last.lines) p.lines = last.lines;
     if (last.nowPlaying) p.nowPlaying = last.nowPlaying;
     if (last.tick) p.tick = last.tick;
+    if (last.noLyrics) p.noLyrics = last.noLyrics;
     return p;
   }
 
@@ -92,6 +93,7 @@
       if (p.lines) last.lines = p.lines;
       if (p.nowPlaying) last.nowPlaying = p.nowPlaying;
       if (p.tick) last.tick = p.tick;
+      if (p.noLyrics) last.noLyrics = p.noLyrics;
       for (var i = 0; i < entries.length; i++) {
         if (entries[i].ready) send(entries[i], p);
       }
