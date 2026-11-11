@@ -22,7 +22,7 @@ constexpr UINT kPresenterMenuMessage = WM_APP + 57;
 // Menu labels are \u escapes so this file stays pure ASCII for MSVC.
 constexpr wchar_t kCloseScreen[] = L"\u5173\u95ED\u672C\u5C4F\u6295\u653E";
 constexpr wchar_t kCloseAll[] = L"\u5173\u95ED\u5168\u90E8\u6295\u653E";
-constexpr wchar_t kCloseCast[] = L"\u5173\u95ED\u6B4C\u8BCD\u6295\u653E";
+constexpr wchar_t kCloseCast[] = L"\u5173\u95ED\u6295\u653E";
 
 struct PresenterBinding {
   CanvasPresenterSet* owner;

@@ -112,6 +112,9 @@
   "chooseThisFolder": "Use this folder",
   "openStorageSettings": "Open system settings",
   "noSubfolders": "No subfolders here; you can use this folder.",
+  "thisPc": "This PC",
+  "switchDrive": "Switch drive",
+  "chooseDriveHint": "Pick a drive to open its root folder, then keep browsing.",
 
   "imageDirUnreadable": "Can't read this folder",
   "chooseBackgroundImage": "Choose background image",

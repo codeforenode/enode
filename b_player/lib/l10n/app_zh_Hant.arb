@@ -120,6 +120,9 @@
   "chooseThisFolder": "選擇此資料夾",
   "openStorageSettings": "去系統設定授權",
   "noSubfolders": "這裡沒有子資料夾，可直接選擇目前資料夾",
+  "thisPc": "此電腦",
+  "switchDrive": "切換磁碟機",
+  "chooseDriveHint": "選一個磁碟機進入它的根目錄，再繼續挑資料夾。",
 
   "imageDirUnreadable": "讀不到這個資料夾",
   "chooseBackgroundImage": "選擇背景圖片",

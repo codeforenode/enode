@@ -360,6 +360,16 @@ class AppL10nEn extends AppL10n {
   String get noSubfolders => 'No subfolders here; you can use this folder.';
 
   @override
+  String get thisPc => 'This PC';
+
+  @override
+  String get switchDrive => 'Switch drive';
+
+  @override
+  String get chooseDriveHint =>
+      'Pick a drive to open its root folder, then keep browsing.';
+
+  @override
   String get imageDirUnreadable => 'Can\'t read this folder';
 
   @override

@@ -120,6 +120,9 @@
   "chooseThisFolder": "选择此文件夹",
   "openStorageSettings": "去系统设置授权",
   "noSubfolders": "这里没有子文件夹，可直接选择当前文件夹",
+  "thisPc": "此电脑",
+  "switchDrive": "切换盘符",
+  "chooseDriveHint": "选一个盘符进入它的根目录，然后继续挑文件夹。",
 
   "imageDirUnreadable": "读不到这个文件夹",
   "chooseBackgroundImage": "选择背景图片",
