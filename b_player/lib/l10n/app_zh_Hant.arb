@@ -39,6 +39,8 @@
   "aboutNodeId": "節點 ID",
   "aboutConnection": "連線狀態",
   "aboutLibraryDir": "曲庫資料夾",
+  "aboutLogDir": "偵錯日誌",
+  "aboutOpenLog": "開啟日誌資料夾",
   "aboutOpenSource": "開源授權",
   "aboutLicense": "授權條款",
   "aboutViewLicenses": "查看授權與第三方元件",

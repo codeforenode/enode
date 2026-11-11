@@ -8,6 +8,7 @@ import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
 
 import '../l10n/l10n.dart';
+import '../log.dart';
 import 'config.dart';
 import 'library.dart';
 import 'node_id.dart';
@@ -187,7 +188,7 @@ class EdgeNode extends ChangeNotifier {
       );
     } catch (e) {
       lastError = l10n.connectFailed('$e');
-      debugPrint('[edge] connect failed: $e');
+      EnodeLog.e('mqtt', '连接失败 host=${config.host} port=${config.port}', e);
       status = EdgeStatus.error;
       notifyListeners();
       _scheduleRetry();
@@ -196,7 +197,7 @@ class EdgeNode extends ChangeNotifier {
 
     if (c.connectionStatus?.state != MqttConnectionState.connected) {
       lastError = l10n.connectNotEstablished('${c.connectionStatus?.state}');
-      debugPrint('[edge] no connection: ${c.connectionStatus?.state} $lastError');
+      EnodeLog.e('mqtt', '连接未建立 state=${c.connectionStatus?.state} err=$lastError');
       status = EdgeStatus.error;
       notifyListeners();
       _scheduleRetry();
@@ -209,6 +210,7 @@ class EdgeNode extends ChangeNotifier {
     connectedAt = DateTime.now();
     _retryDelaySec = 3;
     _retryTimer?.cancel();
+    EnodeLog.i('mqtt', '已连接 node=$nodeId host=${config.host}:${config.port}');
 
     final c = _client;
     // updates 只有在连接建立后才可用，必须在此刻挂接，否则收不到任何下行消息。
@@ -233,6 +235,7 @@ class EdgeNode extends ChangeNotifier {
     if (_closing || _disposed) return;
     status = EdgeStatus.error;
     lastError = l10n.connectionClosed;
+    EnodeLog.w('mqtt', '连接断开 node=$nodeId');
     notifyListeners();
     _scheduleRetry();
   }

@@ -3,12 +3,12 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'library.dart';
+import '../log.dart';
 
 /// 出厂默认歌单：把「人读的歌名 + 歌手」在节点上解析成真正的 [Track]。
 ///
@@ -93,9 +93,10 @@ class FeaturedService {
       await _resolveAll(seed.tracks);
       await _writeCache(seed.rev);
     } catch (e) {
-      debugPrint('[featured] prepare failed: $e');
+      EnodeLog.e('featured', '解析失败', e);
     } finally {
       _ready = true;
+      EnodeLog.i('featured', '就绪 resolved=${_tracks.length} failed=$_failed seed=$_seedTotal');
     }
   }
 
@@ -140,7 +141,7 @@ class FeaturedService {
         );
         if (hit != null) return hit;
       } catch (e) {
-        debugPrint('[featured] search "$query" failed: $e');
+        EnodeLog.w('featured', '检索失败 q=$query', e);
       }
     }
     return null;
@@ -170,7 +171,7 @@ class FeaturedService {
           if (m is Map) _trackFromCache(Map<String, Object?>.from(m)),
       ];
     } catch (e) {
-      debugPrint('[featured] cache read failed: $e');
+      EnodeLog.w('featured', '缓存读取失败', e);
       return null;
     }
   }
@@ -191,7 +192,7 @@ class FeaturedService {
       await tmp.writeAsString(body);
       await tmp.rename(file.path);
     } catch (e) {
-      debugPrint('[featured] cache write failed: $e');
+      EnodeLog.w('featured', '缓存写入失败', e);
     }
   }
 
@@ -215,7 +216,7 @@ class FeaturedService {
       final dir = await getApplicationSupportDirectory();
       return File(p.join(dir.path, _cacheName));
     } catch (e) {
-      debugPrint('[featured] cache dir unavailable: $e');
+      EnodeLog.w('featured', '拿不到缓存目录', e);
       return null;
     }
   }

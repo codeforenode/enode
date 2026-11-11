@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' show PlatformDispatcher;
 
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:screen_retriever/screen_retriever.dart';
@@ -16,6 +18,7 @@ import 'edge/library_bootstrap.dart';
 import 'edge/player_engine.dart';
 import 'l10n/l10n.dart';
 import 'legal.dart';
+import 'log.dart';
 import 'state/app_settings.dart';
 import 'state/app_state.dart';
 import 'state/app_update.dart';
@@ -45,6 +48,12 @@ Future<void> main(List<String> args) async {
     return;
   }
   WidgetsFlutterBinding.ensureInitialized();
+  // 投放子窗在上一段就分流了，它们不写日志：同目录多进程追加同一个文件会互相打断，
+  // 投放出问题的概率也远低于主进程。
+  await EnodeLog.init();
+  EnodeLog.bridgeConsole();
+  _installErrorHandlers();
+  EnodeLog.i('app', '启动 os=${Platform.operatingSystem} debug=$kDebugMode');
   registerAppLicenses();
   if (Platform.isWindows && castSpikeRequested(args)) {
     await runCastSpike();
@@ -91,6 +100,23 @@ Future<void> main(List<String> args) async {
     settings: settings,
     checkUpdates: true,
   ));
+  EnodeLog.i(
+    'app',
+    '曲库曲目=${bootstrap?.library.tracks.length ?? 0} '
+    'mqtt已配置=${savedMqtt?.configured ?? false}',
+  );
+}
+
+/// 未捕获异常一律落盘。没有这一步，界面异常只会让窗口消失，店家什么也提供不了。
+void _installErrorHandlers() {
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    EnodeLog.e('flutter', details.exceptionAsString(), details.exception, details.stack);
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    EnodeLog.e('dart', '未捕获的异步异常', error, stack);
+    return true;
+  };
 }
 
 class BPlayerApp extends StatefulWidget {

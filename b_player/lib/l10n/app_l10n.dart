@@ -309,6 +309,18 @@ abstract class AppL10n {
   /// **'曲庫資料夾'**
   String get aboutLibraryDir;
 
+  /// No description provided for @aboutLogDir.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'偵錯日誌'**
+  String get aboutLogDir;
+
+  /// No description provided for @aboutOpenLog.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'開啟日誌資料夾'**
+  String get aboutOpenLog;
+
   /// No description provided for @aboutOpenSource.
   ///
   /// In zh_Hant, this message translates to:

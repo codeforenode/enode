@@ -39,6 +39,8 @@
   "aboutNodeId": "Node ID",
   "aboutConnection": "Connection",
   "aboutLibraryDir": "Library folder",
+  "aboutLogDir": "Debug logs",
+  "aboutOpenLog": "Open log folder",
   "aboutOpenSource": "Open source",
   "aboutLicense": "License",
   "aboutViewLicenses": "View licenses & third-party notices",
