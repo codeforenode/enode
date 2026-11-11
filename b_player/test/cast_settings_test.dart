@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -199,6 +200,53 @@ void main() {
     test('工作区矩形用系统给的原点', () {
       expect(m1.workRect, const Rect.fromLTWH(-1920, 0, 1920, 1152));
       expect(m2.label, r'\\.\DISPLAY1 · 1600x852 · 150%');
+    });
+  });
+
+  group('闲时引导语', () {
+    const idle = CastMaterial(
+      id: 'idle-1',
+      type: CastMaterialType.idleText,
+      name: '闲时引导语',
+      text: '扫码点歌，想听什么自己点',
+      fontSize: 72,
+      fontWeight: 700,
+      color: 0xFFFFE082,
+      align: CastAlign.left,
+      shadow: false,
+      fontFamily: 'SimHei',
+    );
+
+    test('编码后解码回来，类型与排版都不丢', () {
+      final back = CastSettings.decode(
+        jsonEncode(const CastSettings(materials: [idle]).toJson()),
+      ).materials.single;
+      expect(back.type, CastMaterialType.idleText);
+      expect(back.text, '扫码点歌，想听什么自己点');
+      expect(back.fontSize, 72);
+      expect(back.fontWeight, 700);
+      expect(back.color, 0xFFFFE082);
+      expect(back.align, CastAlign.left);
+      expect(back.shadow, false);
+      expect(back.fontFamily, 'SimHei');
+      expect(back.isIdleOnly, isTrue);
+    });
+
+    test('排版字段和静态文字完全同构，只是类型串不同', () {
+      const text = CastMaterial(id: 't1', type: CastMaterialType.text, text: '通告', fontSize: 72);
+      expect(idle.toJson().keys.toSet(), text.toJson().keys.toSet());
+      expect(idle.toJson()['t'], 'idleText');
+      expect(text.toJson()['t'], 'text');
+      expect(text.isIdleOnly, isFalse);
+    });
+
+    test('空内容的闲时引导语仍算「没东西可显示」', () {
+      expect(const CastMaterial(id: 'e', type: CastMaterialType.idleText).hasContent, isFalse);
+      expect(
+        const CastMaterial(id: 'e', type: CastMaterialType.idleText, text: '  ').hasContent,
+        isFalse,
+      );
+      expect(idle.hasContent, isTrue);
     });
   });
 }

@@ -63,6 +63,10 @@ class EnodeLog {
     };
   }
 
+  /// 把 trackKey 这类长 id 截成尾部 8 位：日志里够区分，又不占篇幅。
+  static String shortId(String value) =>
+      value.length <= 8 ? value : '…${value.substring(value.length - 8)}';
+
   static void d(String tag, String message) => _write('D', tag, message);
   static void i(String tag, String message) => _write('I', tag, message);
 

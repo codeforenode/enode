@@ -41,6 +41,8 @@
   "aboutLibraryDir": "曲库文件夹",
   "aboutLogDir": "调试日志",
   "aboutOpenLog": "打开日志目录",
+  "copy": "复制",
+  "copyDone": "已复制",
   "aboutOpenSource": "开源许可",
   "aboutLicense": "许可证",
   "aboutViewLicenses": "查看许可与第三方组件",
@@ -627,6 +629,9 @@
   "screenTypeVideoDesc": "本机或网络影片，可带声音",
   "screenTypeText": "文字",
   "screenTypeTextDesc": "静态文字",
+  "screenTypeIdleText": "闲时引导语",
+  "screenTypeIdleTextDesc": "无曲目时自动显示",
+  "screenIdleNote": "只在没有曲目、队列也空时显示，一有歌就自动隐藏",
 
   "sourcesTitle": "音源",
   "sourcesTotal": "曲库共 {count} 首",

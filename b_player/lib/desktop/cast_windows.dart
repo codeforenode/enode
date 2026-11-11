@@ -60,7 +60,12 @@ Map<String, Object?> castStylePush({
 }
 
 /// 歌词整包：所有窗收到的是同一个串，所以文字与行号不可能对不上。
-Map<String, Object?> castLyricPush({required List<LyricLine> lines, QueueItem? nowPlaying}) => {
+Map<String, Object?> castLyricPush({
+  required List<LyricLine> lines,
+  QueueItem? nowPlaying,
+  bool idle = false,
+}) =>
+    {
       'lines': [
         for (final l in lines)
           [
@@ -75,9 +80,12 @@ Map<String, Object?> castLyricPush({required List<LyricLine> lines, QueueItem? n
       ],
       'title': nowPlaying?.title,
       'artist': nowPlaying?.artist,
-      'seat': nowPlaying?.seatLabel,
+      // 没带桌号就给 null，投放页的 trim() 判断会自动跳过这一段。
+      'seat': nowPlaying?.seat,
       'durationMs': nowPlaying?.durationMs ?? 0,
       'hasTrack': nowPlaying != null,
+      // 闲时引导语的显隐开关：没有曲目、队列也空时才是 true。
+      'idle': idle,
     };
 
 /// 时钟锚点：推的是「此刻的绝对位置 + 当时的墙钟」，子引擎自己往前推，
@@ -304,8 +312,12 @@ class CastWindows {
     if (!useCanvas && live.isEmpty) return;
     final np = _state.nowPlaying;
     final lines = _state.lyricLines;
-    // 语言也算签名：占位文案随界面语言，切语言要重推一次。
-    final sig = '${np?.trackKey ?? '-'}|${lines.length}|${currentLocale.toLanguageTag()}';
+    // 「闲时」= 没有曲目在播、队列也空着：刚开机、点的歌都播完了。
+    // 中途换歌时队列非空，不会闪出引导语。
+    final idle = np == null && _state.queue.isEmpty;
+    // 语言也算签名：占位文案随界面语言，切语言要重推一次。idle 同理——
+    // 队列一空就得让引导语出来，不能等下一次换歌。
+    final sig = '${np?.trackKey ?? '-'}|${lines.length}|${currentLocale.toLanguageTag()}|$idle';
     if (forceLyric || sig != _lyricSig) {
       _lyricSig = sig;
       if (useCanvas) {
@@ -313,12 +325,13 @@ class CastWindows {
           lines,
           title: np?.title,
           artist: np?.artist,
-          seat: np?.seatLabel,
+          seat: np?.seat,
           durationMs: np?.durationMs ?? 0,
           hasTrack: np != null,
+          idle: idle,
         );
       } else {
-        final payload = castLyricPush(lines: lines, nowPlaying: np);
+        final payload = castLyricPush(lines: lines, nowPlaying: np, idle: idle);
         for (final id in live) {
           await _send(id, 'lyric', payload);
         }

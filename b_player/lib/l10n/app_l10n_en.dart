@@ -122,6 +122,12 @@ class AppL10nEn extends AppL10n {
   String get aboutOpenLog => 'Open log folder';
 
   @override
+  String get copy => 'Copy';
+
+  @override
+  String get copyDone => 'Copied';
+
+  @override
   String get aboutOpenSource => 'Open source';
 
   @override
@@ -1856,6 +1862,16 @@ class AppL10nEn extends AppL10n {
 
   @override
   String get screenTypeTextDesc => 'Static text';
+
+  @override
+  String get screenTypeIdleText => 'Idle hint';
+
+  @override
+  String get screenTypeIdleTextDesc => 'Shown only when nothing is playing';
+
+  @override
+  String get screenIdleNote =>
+      'Shown only when nothing is playing and the queue is empty';
 
   @override
   String get sourcesTitle => 'Sources';

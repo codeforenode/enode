@@ -380,13 +380,25 @@ class _About extends StatelessWidget {
               ],
             ),
           ),
-        _Row(k: t.aboutNodeId, v: edge.nodeId.isEmpty ? t.notAssigned : edge.nodeId),
+        _Row(
+          k: t.aboutNodeId,
+          v: edge.nodeId.isEmpty ? t.notAssigned : edge.nodeId,
+          trailing: edge.nodeId.isEmpty
+              ? null
+              : IconButton(
+                  icon: const Icon(Icons.copy_rounded, size: 15),
+                  tooltip: t.copy,
+                  visualDensity: VisualDensity.compact,
+                  constraints: const BoxConstraints(),
+                  padding: const EdgeInsets.all(4),
+                  onPressed: () => unawaited(copyToClipboard(context, edge.nodeId, t.copyDone)),
+                ),
+        ),
         _Row(
           k: t.aboutConnection,
           v: edge.statusLabel,
           warn: edge.status == EdgeStatus.error,
         ),
-        _Row(k: t.aboutLibraryDir, v: state.scanDir.isEmpty ? t.notSet : state.scanDir),
         _Row(
           k: t.aboutLogDir,
           v: EnodeLog.directory?.path ?? t.notSet,
@@ -453,10 +465,13 @@ class _About extends StatelessWidget {
 }
 
 class _Row extends StatelessWidget {
-  const _Row({required this.k, required this.v, this.warn = false});
+  const _Row({required this.k, required this.v, this.warn = false, this.trailing});
   final String k;
   final String v;
   final bool warn;
+
+  /// 行尾的小操作（比如节点 ID 的复制按钮）。
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -470,6 +485,7 @@ class _Row extends StatelessWidget {
                 style: kNums.copyWith(
                     fontSize: 12, fontWeight: FontWeight.w600, color: warn ? C.bad : C.txt)),
           ),
+          if (trailing != null) ...[const SizedBox(width: 4), trailing!],
         ]),
       );
 }

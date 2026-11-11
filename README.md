@@ -31,7 +31,8 @@ guest/ (HTML/CSS/JS) ──HTTP── relay/ (Node.js) ──MQTT── broker �
 
 - 请求分两类：`search` 只读、无状态，可跨节点；`enqueue` 与队列/播放状态有状态，必须绑定目标节点。
 - 对外只暴露 `search` / `enqueue`；播放控制不开放给中继与 H5。
-- `nodeId` 由设备派生，跨重启稳定，绑定关系按它写入。
+- `nodeId` 首次启动时随机生成并写入本机，跨重启稳定，绑定关系按它写入；不使用硬件标识，
+  避免批量镜像克隆的机器算出同一个 ID。
 - 状态读取走 retained 快照，客户端不追实时；`health` 10s 心跳。
 
 ## 构建与运行
@@ -104,8 +105,8 @@ npm start                       # 默认 0.0.0.0:8080，PORT 可改；同时静�
 
 TLS 连接设 `MQTT_TLS=1`。接口：`GET /api/state`、`GET /api/search?q=`、`POST /api/enqueue`、`GET /api/featured`。
 
-`/api/featured` 是 C 端冷启动的默认歌单（节点内置「本店常点」，约 40 首、首屏展示 8 首 +
-换一批）。歌单种子在 `b_player/assets/featured/default.json`，只存歌名/歌手/时长，不含音频；
+`/api/featured` 是 C 端冷启动的默认歌单（节点内置「本店常点」，10 首，一次全展示）。
+歌单种子在 `b_player/assets/featured/default.json`，只存歌名/歌手/时长，不含音频；
 节点启动后用关键词检索解析出真正的曲目并缓存到应用支持目录，因此 C 端拿到的 `trackKey`
 可以直接点歌。节点未就绪时 `ready` 为 `false`，C 端会隐藏或先渲染已有部分。
 

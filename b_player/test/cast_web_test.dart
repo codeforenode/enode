@@ -111,4 +111,37 @@ void main() {
     final path = Uri.parse(url).toFilePath().replaceAll(r'\', '/');
     expect(path, endsWith('/data/flutter_assets/assets/cast/lyric.html'));
   });
+
+  group('闲时引导语', () {
+    test('和静态文字发同一套排版字段，但类型要能区分', () {
+      const idle = CastMaterial(
+        id: 'idle-1',
+        type: CastMaterialType.idleText,
+        text: '扫码点歌',
+        fontSize: 72,
+        fontWeight: 700,
+        color: 0xFFFFE082,
+        align: CastAlign.left,
+        shadow: false,
+        fontFamily: 'SimHei',
+      );
+      final item = castWebItem(idle, const CastPlacement(id: 'p1', materialId: 'idle-1', screenId: 's1'));
+      expect(item['t'], 'idleText');
+      expect(item['text'], '扫码点歌');
+      expect(item['size'], 72);
+      expect(item['weight'], 700);
+      expect(item['color'], '#ffe082');
+      expect(item['align'], 'left');
+      expect(item['shadow'], false);
+      expect(item['font'], 'SimHei');
+    });
+
+    test('idle 作为布尔量下发：false 表示有歌，页面要能收到', () {
+      final hasTrack = castWebLyric(const [], title: '唯一', hasTrack: true, idle: false);
+      expect(hasTrack['idle'], false);
+      final idle = castWebLyric(const []);
+      expect(idle['idle'], false);
+      expect(castWebLyric(const [], idle: true)['idle'], true);
+    });
+  });
 }

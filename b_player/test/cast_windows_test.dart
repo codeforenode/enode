@@ -106,7 +106,7 @@ void main() {
       expect(a['fullscreen'], true);
     });
 
-    test('歌词整包只有一份，座位没带就是本机', () {
+    test('歌词整包只有一份，座位没带就不下发', () {
       final payload = castLyricPush(
         lines: const [
           (
@@ -131,7 +131,9 @@ void main() {
         ],
         [4000, '第二句', 8000],
       ]);
-      expect(payload['seat'], l10n.seatLocal);
+      // 没带桌号就不下发 seat，投放页的 trim() 判断会自动跳过这一段；
+      // 不要再兜成「本机」这种标签，那会把缺失当成一种身份。
+      expect(payload['seat'], isNull);
       expect(payload['durationMs'], 61000);
       expect(payload['hasTrack'], true);
       final fromSeat = castLyricPush(

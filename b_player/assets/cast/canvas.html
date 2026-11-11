@@ -17,7 +17,7 @@
   'use strict';
 
   var entries = [];
-  var last = { lines: null, nowPlaying: null, tick: null, noLyrics: null };
+  var last = { lines: null, nowPlaying: null, tick: null, noLyrics: null, idle: null };
 
   function payload() {
     var p = {};
@@ -25,6 +25,8 @@
     if (last.nowPlaying) p.nowPlaying = last.nowPlaying;
     if (last.tick) p.tick = last.tick;
     if (last.noLyrics) p.noLyrics = last.noLyrics;
+    // idle 可能是 false，不能按真值判断，否则重放时会漏掉「有歌」这一态。
+    if (typeof last.idle === 'boolean') p.idle = last.idle;
     return p;
   }
 
@@ -87,13 +89,15 @@
         replay(entries[i]);
       }
     },
-    // 推送：歌词 / 当前曲 / 锚点，缺哪段页面就保留上一份。
+    // 推送：歌词 / 当前曲 / 锚点 / 闲时开关，缺哪段页面就保留上一份。
     push: function (p) {
       if (!p || typeof p !== 'object') return;
       if (p.lines) last.lines = p.lines;
       if (p.nowPlaying) last.nowPlaying = p.nowPlaying;
       if (p.tick) last.tick = p.tick;
       if (p.noLyrics) last.noLyrics = p.noLyrics;
+      // false 也是有效值：有歌时要把引导语收起来。
+      if (typeof p.idle === 'boolean') last.idle = p.idle;
       for (var i = 0; i < entries.length; i++) {
         if (entries[i].ready) send(entries[i], p);
       }

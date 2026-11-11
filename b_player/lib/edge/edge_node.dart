@@ -395,6 +395,10 @@ class EdgeNode extends ChangeNotifier {
     if (text is String && text.isNotEmpty) {
       message['rev'] = sha256.convert(utf8.encode(text)).toString().substring(0, 8);
     }
+    EnodeLog.d(
+      'lyric',
+      '发布 ${text is String ? text.length : 0} 字符 rev=${message['rev'] ?? '-'}',
+    );
     _publish(lyricTopicName, jsonEncode(message), retain: true);
   }
 
@@ -424,13 +428,20 @@ class EdgeNode extends ChangeNotifier {
 
   void _publish(String topic, String payload, {bool retain = false}) {
     final c = _client;
-    if (c == null || c.connectionStatus?.state != MqttConnectionState.connected) return;
+    if (c == null || c.connectionStatus?.state != MqttConnectionState.connected) {
+      // 发不出去时中继只会干等到超时，看起来像节点挂了。留一条痕迹，
+      // 而且要能在日志里和「已连接」对上时间。
+      EnodeLog.d('mqtt', '未连接，丢弃发布 topic=$topic ${payload.length} 字节');
+      return;
+    }
     try {
       // addString 不是 UTF-8：中文会被拆成 UTF-16 半字，必须用 addUTF8String。
       final builder = MqttClientPayloadBuilder()..addUTF8String(payload);
       c.publishMessage(topic, MqttQos.atLeastOnce, builder.payload!, retain: retain);
     } catch (e) {
       lastError = l10n.publishFailed('$e');
+      // 不记 payload：入队应答里有桌号，歌词里有正文。
+      EnodeLog.w('mqtt', '发布失败 topic=$topic ${payload.length} 字节', e);
       notifyListeners();
     }
   }
@@ -523,9 +534,22 @@ class EdgeNode extends ChangeNotifier {
 
   void _handleEnqueue(String text) {
     final env = EdgeEnvelope.parse(_decodeJson(text));
-    if (env == null || env.type != tEnqueueReq || env.node != nodeId) return;
+    if (env == null || env.type != tEnqueueReq) {
+      // 解析不出来通常是接入方把 payload 写坏了；别静默丢弃，否则中继那边只能等到超时。
+      EnodeLog.w('mqtt', '收到无法解析的入队报文 ${text.length} 字节');
+      return;
+    }
+    if (env.node != nodeId) {
+      // 报文指定的不是本机。共享 broker 且没配 TARGET_NODE 时会走到这里，
+      // 是中继挑错节点的直接证据。
+      EnodeLog.d('mqtt', '入队报文发给了 ${env.node}，本机是 $nodeId，忽略');
+      return;
+    }
     final nonce = env.nonce?.trim();
-    if (nonce == null || nonce.isEmpty) return;
+    if (nonce == null || nonce.isEmpty) {
+      EnodeLog.w('mqtt', '入队报文缺少 nonce，无法应答');
+      return;
+    }
     final topic = enqueueRespTopic(config.topicPrefix, nodeId, nonce);
     final now = _now();
 
@@ -533,17 +557,21 @@ class EdgeNode extends ChangeNotifier {
     try {
       req = EnqueueRequest.fromPayload(env.payload, envelopeTs: env.ts);
     } on FormatException catch (e) {
+      EnodeLog.w('queue', '拒绝入队请求：报文不合法 ${e.message}');
       _respond(topic, _errorEnvelope(tEnqueueResp, nonce, errBadRequest, e.message));
       return;
     }
 
     if (req.ts != 0 && now - req.ts > _staleRequestMs) {
+      EnodeLog.w('queue', '拒绝入队请求：已过期 ${(now - req.ts) ~/ 1000}s requestId=${req.requestId}');
       _respond(topic, _errorEnvelope(tEnqueueResp, nonce, errStale, null));
       return;
     }
 
     final cached = _responses[req.requestId];
     if (cached != null && now - cached.atMs < _requestCacheTtlMs) {
+      // 幂等重试：上一次已经在处理或已处理完，直接回同一份结果。
+      EnodeLog.d('queue', '重复 requestId=${req.requestId}，返回 ${(now - cached.atMs) ~/ 1000}s 前的结果');
       _respond(topic, EdgeEnvelope(
         type: tEnqueueResp,
         node: nodeId,
@@ -555,6 +583,13 @@ class EdgeNode extends ChangeNotifier {
     }
 
     if (req.tag != null && !_allowEnqueue(req.tag!, now)) {
+      // 顾客「点了没反应」最常见的原因之一：C端 只看到「请求太频繁」，
+      // 现场没人知道是哪个客户端刷过头了。
+      EnodeLog.w(
+        'queue',
+        '限流 tag=${EnodeLog.shortId(req.tag!)}${req.seat == null ? '' : ' seat=${req.seat}'}'
+        '（1 分钟内超过 $_enqueuePerMinute 次）',
+      );
       _respond(topic, _errorEnvelope(tEnqueueResp, nonce, errRateLimited, null));
       return;
     }

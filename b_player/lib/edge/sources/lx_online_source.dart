@@ -2,6 +2,7 @@ import 'package:http/http.dart' as http;
 
 import '../music_info.dart';
 import '../music_source.dart';
+import '../../log.dart';
 import 'lx_config.dart';
 import 'lx_http.dart';
 import 'lx_platforms.dart';
@@ -203,19 +204,34 @@ class LxOnlineSource extends MusicSource {
     }
     if (attempts.isEmpty) throw MusicSourceException(l10n.trackNoPlatform);
 
+    // 主平台 + alts：逐个试，日志里记清每个平台的耗时和失败原因，
+    // 这样「这首歌为什么放不出来」不用猜。
+    final id = EnodeLog.shortId(track.trackKey);
+    final total = attempts.where((a) => a['platform'] is String && a['songId'] != null).length;
+    var index = 0;
     MusicSourceException? lastError;
     for (final attempt in attempts) {
       final p = attempt['platform'];
       final sid = attempt['songId'];
       if (p is! String || sid == null) continue;
+      index++;
+      final watch = Stopwatch()..start();
       try {
-        return await _resolveUrl(p, sid.toString(), track);
+        final uri = await _resolveUrl(p, sid.toString(), track);
+        EnodeLog.i(
+          'source',
+          '$id [$index/$total] $p 成功 ${watch.elapsedMilliseconds}ms ${uri.scheme}://${uri.host}',
+        );
+        return uri;
       } on MusicSourceException catch (e) {
         lastError = e;
+        EnodeLog.w('source', '$id [$index/$total] $p 失败 ${watch.elapsedMilliseconds}ms', e);
       } catch (e) {
         lastError = MusicSourceException(l10n.resolveFailed('$e'));
+        EnodeLog.w('source', '$id [$index/$total] $p 异常 ${watch.elapsedMilliseconds}ms', e);
       }
     }
+    EnodeLog.e('source', '$id 全部 $total 个平台都取不到链');
     throw lastError ?? MusicSourceException(l10n.resolveFailedShort);
   }
 
@@ -248,20 +264,35 @@ class LxOnlineSource extends MusicSource {
   /// 主平台歌词失败时按 `alts` 里的其它平台逐个尝试，和播放地址的回退链一致。
   @override
   Future<MusicLyric> lyric(Track track) async {
+    final id = EnodeLog.shortId(track.trackKey);
     MusicSourceException? lastError;
+    var index = 0;
     for (final candidate in _lyricCandidates(track)) {
       final platform = _platformById(candidate.extra['platform']);
       if (platform == null) continue;
+      index++;
+      final watch = Stopwatch()..start();
       try {
         final lyric = await platform.lyric(_http, candidate);
-        if (!lyric.isEmpty) return lyric;
+        if (!lyric.isEmpty) {
+          EnodeLog.i(
+            'lyric',
+            '$id 平台 ${platform.id} 取到 ${lyric.lyric.length} 字符 '
+            '${lyric.format} ${watch.elapsedMilliseconds}ms',
+          );
+          return lyric;
+        }
         lastError = MusicSourceException(l10n.lyricsEmpty);
+        EnodeLog.w('lyric', '$id 平台 ${platform.id} 返回空歌词 ${watch.elapsedMilliseconds}ms');
       } on MusicSourceException catch (e) {
         lastError = e;
+        EnodeLog.w('lyric', '$id 平台 ${platform.id} 取词失败 ${watch.elapsedMilliseconds}ms', e);
       } catch (e) {
         lastError = MusicSourceException(l10n.lyricsFetchFailed('$e'));
+        EnodeLog.w('lyric', '$id 平台 ${platform.id} 取词异常 ${watch.elapsedMilliseconds}ms', e);
       }
     }
+    EnodeLog.w('lyric', '$id 试过 $index 个平台都没有歌词');
     throw lastError ?? MusicSourceException(l10n.trackNoLyrics);
   }
 

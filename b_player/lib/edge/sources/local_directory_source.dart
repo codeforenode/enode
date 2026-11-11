@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import '../library_scanner.dart';
 import '../library_store.dart';
 import '../../l10n/l10n.dart';
+import '../../log.dart';
 import '../music_info.dart';
 import '../music_source.dart';
 
@@ -59,8 +60,13 @@ class LocalDirectorySource extends MusicSource {
     if (_loaded) return;
     _loaded = true;
     final index = await store.read();
-    if (index == null) return;
+    if (index == null) {
+      EnodeLog.d('library', '没有缓存索引 dir=$_root');
+      return;
+    }
     if (p.normalize(index.root) != _root) {
+      // 曲库目录被改过，旧索引说的不是这个目录，继续用会展示一批已经不存在的歌。
+      EnodeLog.i('library', '缓存索引属于旧目录 ${index.root}，已清除（当前 $_root）');
       await store.clear();
       return;
     }
@@ -69,7 +75,17 @@ class LocalDirectorySource extends MusicSource {
     _lastTookMs = index.tookMs;
     _lastScanAt = index.scannedAtMs == 0 ? null : DateTime.fromMillisecondsSinceEpoch(index.scannedAtMs);
     _reindex();
+    EnodeLog.i(
+      'library',
+      '恢复缓存索引 ${_tracks.length} 首 dir=$_root'
+      '${_lastScanAt == null ? '' : ' 上次扫描=${_fmtStamp(_lastScanAt!)}'}',
+    );
   }
+
+  static String _fmtStamp(DateTime t) =>
+      '${t.year}-${_two(t.month)}-${_two(t.day)} ${_two(t.hour)}:${_two(t.minute)}';
+
+  static String _two(int v) => v.toString().padLeft(2, '0');
 
   /// 换目录：旧索引属于旧根，直接清掉，等下一次扫描重建。
   Future<void> setRoot(String root) async {
@@ -98,6 +114,21 @@ class LocalDirectorySource extends MusicSource {
       isCancelled: isCancelled,
     );
     _lastError = result.error;
+    if (result.error != null) {
+      // 目录不存在、无权限、盘符没挂载都走这里，是「曲库是空的」最常见的解释。
+      EnodeLog.w('library', '扫描出错 dir=$_root err=${result.error}');
+    } else if (result.canceled) {
+      EnodeLog.i('library', '扫描被取消 dir=$_root 已处理 ${result.tracks.length} 首');
+    } else if (result.tracks.isEmpty) {
+      // 扫完是空的比报错更迷惑：目录能读、没报错、歌单却是空的。
+      EnodeLog.w('library', '扫描结果为空 dir=$_root，确认曲库目录填对了没');
+    } else {
+      EnodeLog.i(
+        'library',
+        '扫描完成 dir=$_root 曲目=${result.tracks.length}'
+        '${result.broken > 0 ? ' 跳过=${result.broken}' : ''} 耗时=${result.tookMs}ms',
+      );
+    }
     if (result.error == null && !result.canceled) {
       _tracks = result.tracks;
       _broken = result.broken;
@@ -112,8 +143,10 @@ class LocalDirectorySource extends MusicSource {
           scannedAtMs: result.scannedAtMs,
           tookMs: result.tookMs,
         ));
-      } catch (_) {
-        // 索引落盘失败不影响本次内存曲库。
+      } catch (e) {
+        // 索引落盘失败不影响本次内存曲库，但下次启动会退回上一次的索引，
+        // 看起来像「新加的歌不见了」，所以要留痕。
+        EnodeLog.w('library', '索引落盘失败，下次启动将沿用旧索引 dir=$_root', e);
       }
     }
     return result;

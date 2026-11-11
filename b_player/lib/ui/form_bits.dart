@@ -1,10 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../theme.dart';
 
 /// 设置页里反复用到的小表单件：字段标题、选项胶囊、输入框。
 ///
 /// 原来是「音源」面板和「设置」弹窗各写一份，投放面板是第三份，所以收到这里统一。
+
+/// 复制一段文本并给一句轻提示。节点 ID 这类需要报给运维的值都用它。
+Future<void> copyToClipboard(BuildContext context, String text, String doneLabel) async {
+  await Clipboard.setData(ClipboardData(text: text));
+  if (!context.mounted) return;
+  ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+    SnackBar(
+      content: Text(doneLabel),
+      duration: const Duration(seconds: 2),
+      behavior: SnackBarBehavior.floating,
+      width: 200,
+    ),
+  );
+}
 
 class FieldLabel extends StatelessWidget {
   const FieldLabel(this.text, {super.key});
