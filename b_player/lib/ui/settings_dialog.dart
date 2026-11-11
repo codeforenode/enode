@@ -8,6 +8,7 @@ import '../app_version.dart';
 import '../edge/edge_node.dart';
 import '../l10n/l10n.dart';
 import '../legal.dart';
+import '../log.dart';
 import '../state/app_settings.dart';
 import '../state/app_state.dart';
 import '../state/app_update.dart';
@@ -386,6 +387,18 @@ class _About extends StatelessWidget {
           warn: edge.status == EdgeStatus.error,
         ),
         _Row(k: t.aboutLibraryDir, v: state.scanDir.isEmpty ? t.notSet : state.scanDir),
+        _Row(
+          k: t.aboutLogDir,
+          v: EnodeLog.directory?.path ?? t.notSet,
+          warn: EnodeLog.directory == null,
+        ),
+        Row(children: [
+          _link(
+            icon: Icons.folder_open_rounded,
+            label: t.aboutOpenLog,
+            onTap: () => unawaited(openLogDirectory()),
+          ),
+        ]),
         const SizedBox(height: 18),
         FieldLabel(t.aboutOpenSource),
         const SizedBox(height: 8),

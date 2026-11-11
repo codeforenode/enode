@@ -23,6 +23,7 @@ import '../edge/sources/webdav_config.dart';
 import '../edge/sources/webdav_manager.dart';
 import '../edge/sources/webdav_source.dart';
 import '../l10n/l10n.dart';
+import '../log.dart';
 import 'cast_settings.dart';
 import 'lrc.dart';
 
@@ -659,6 +660,8 @@ class AppState extends ChangeNotifier {
       _failAndSkip(l10n.playOpenFailed(head.title, '$openError'), gen);
       return;
     }
+    // 只记来源 host：直链的 path 与 query 可能带签名，不该进日志。
+    EnodeLog.i('player', '开播《${head.title}》 ${current.uri.scheme}://${current.uri.host}');
 
     _loading = false;
     try {
@@ -718,6 +721,7 @@ class AppState extends ChangeNotifier {
   void _failAndSkip(String message, int gen) {
     if (_disposed || gen != _playGen) return;
     _playbackError = message;
+    EnodeLog.w('player', '跳过 ${nowPlaying?.title ?? ''}：$message');
     _advanceHead();
   }
 

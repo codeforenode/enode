@@ -116,6 +116,12 @@ class AppL10nEn extends AppL10n {
   String get aboutLibraryDir => 'Library folder';
 
   @override
+  String get aboutLogDir => 'Debug logs';
+
+  @override
+  String get aboutOpenLog => 'Open log folder';
+
+  @override
   String get aboutOpenSource => 'Open source';
 
   @override

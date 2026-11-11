@@ -217,7 +217,10 @@ void main() {
     expect(find.text(l10n.aboutVersionNode), findsOneWidget);
     expect(find.text(l10n.aboutConnection), findsOneWidget);
     expect(find.text(l10n.aboutLibraryDir), findsOneWidget);
-    expect(find.text(l10n.notSet), findsOneWidget);
+    // 测试进程没有初始化日志，曲库目录与日志目录都会落在「未设置」
+    expect(find.text(l10n.notSet), findsWidgets);
+    expect(find.text(l10n.aboutLogDir), findsOneWidget);
+    expect(find.text(l10n.aboutOpenLog), findsOneWidget);
     expect(find.textContaining('连点上方版本号'), findsNothing);
 
     await tester.pumpWidget(const SizedBox());

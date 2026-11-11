@@ -114,6 +114,12 @@ class AppL10nZh extends AppL10n {
   String get aboutLibraryDir => '曲庫資料夾';
 
   @override
+  String get aboutLogDir => '偵錯日誌';
+
+  @override
+  String get aboutOpenLog => '開啟日誌資料夾';
+
+  @override
   String get aboutOpenSource => '開源授權';
 
   @override
@@ -2086,6 +2092,12 @@ class AppL10nZhHans extends AppL10nZh {
   String get aboutLibraryDir => '曲库文件夹';
 
   @override
+  String get aboutLogDir => '调试日志';
+
+  @override
+  String get aboutOpenLog => '打开日志目录';
+
+  @override
   String get aboutOpenSource => '开源许可';
 
   @override
@@ -4055,6 +4067,12 @@ class AppL10nZhHant extends AppL10nZh {
 
   @override
   String get aboutLibraryDir => '曲庫資料夾';
+
+  @override
+  String get aboutLogDir => '偵錯日誌';
+
+  @override
+  String get aboutOpenLog => '開啟日誌資料夾';
 
   @override
   String get aboutOpenSource => '開源授權';

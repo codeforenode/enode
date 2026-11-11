@@ -39,6 +39,8 @@
   "aboutNodeId": "节点 ID",
   "aboutConnection": "连接状态",
   "aboutLibraryDir": "曲库文件夹",
+  "aboutLogDir": "调试日志",
+  "aboutOpenLog": "打开日志目录",
   "aboutOpenSource": "开源许可",
   "aboutLicense": "许可证",
   "aboutViewLicenses": "查看许可与第三方组件",
