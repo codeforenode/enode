@@ -53,7 +53,10 @@ Future<void> main(List<String> args) async {
   await EnodeLog.init();
   EnodeLog.bridgeConsole();
   _installErrorHandlers();
-  EnodeLog.i('app', '启动 os=${Platform.operatingSystem} debug=$kDebugMode');
+  EnodeLog.i(
+    'app',
+    '启动 v=${EnodeLog.version} os=${Platform.operatingSystem} debug=$kDebugMode',
+  );
   registerAppLicenses();
   if (Platform.isWindows && castSpikeRequested(args)) {
     await runCastSpike();
@@ -193,10 +196,24 @@ class _BPlayerAppState extends State<BPlayerApp> with WidgetsBindingObserver {
   }
 
   /// 托盘「退出」确认后、进程结束前：收投放窗、补发离线状态、断 MQTT，并留时间把包发出去。
+  ///
+  /// 每步单独兜底：一步失败不能把后面几步一起跳过，否则退出会停在半路。
   Future<void> _shutDown() async {
-    await _state.closeCastWindows();
-    await _state.edge.publishOffline();
+    try {
+      await _state.closeCastWindows();
+      EnodeLog.i('app', '退出：投放已收');
+    } catch (e, st) {
+      EnodeLog.e('app', '退出：收投放窗失败', e, st);
+    }
+    try {
+      await _state.edge.publishOffline();
+      EnodeLog.i('app', '退出：已补发离线状态');
+    } catch (e, st) {
+      EnodeLog.e('app', '退出：补发离线状态失败', e, st);
+    }
     _state.dispose();
+    EnodeLog.i('app', '退出：状态已释放');
+    // 给 QoS1 的离线报文留出到达 broker 的时间。
     await Future<void>.delayed(const Duration(milliseconds: 250));
   }
 

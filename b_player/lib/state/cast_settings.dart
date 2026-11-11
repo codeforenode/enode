@@ -115,11 +115,19 @@ class CastRegion {
       return v == null ? fallback : v.clamp(0.0, 1.0);
     }
 
-    final region = CastRegion(
+    var region = CastRegion(
       left: read('l', 0),
       top: read('t', 0),
       width: read('w', 1),
       height: read('h', 1),
+    );
+    // 手工改过的存档可能出现 l=0.8,w=1 这种右/下溢出的组合：
+    // 折回边界，别让投放窗超出工作区。
+    region = CastRegion(
+      left: region.left,
+      top: region.top,
+      width: (region.left + region.width).clamp(0.0, 1.0) - region.left,
+      height: (region.top + region.height).clamp(0.0, 1.0) - region.top,
     );
     // 宽高为 0 的存档没意义，退回整屏，避免投放窗变成一条看不见的缝。
     return region.width < 0.01 || region.height < 0.01 ? full : region;

@@ -30,15 +30,23 @@ class Library {
   /// 拿着快过期的直链去开。
   static const _audioTtl = Duration(minutes: 3);
 
+  /// 取词失败后的冷却时长：失败不进正缓存（否则一次网络抖动就让这首歌全程没词），
+  /// 但短时间内也别反复打上游——60s 后自动允许重试。
+  static const _lyricFailCooldown = Duration(seconds: 60);
+
   final MusicSourceRegistry registry;
 
   List<Track> _tracks = const [];
   final Map<String, Track> _byKey = {};
   final Map<String, Track> _onlineTracks = {};
-  final Map<String, MusicLyric?> _lyricCache = {};
+  final Map<String, MusicLyric> _lyricCache = {};
+  final Map<String, DateTime> _lyricFailedAt = {};
   final Map<String, ({AudioRef ref, DateTime at})> _audioCache = {};
   final Map<String, Future<MusicLyric?>> _lyricInflight = {};
   final Map<String, Future<AudioRef?>> _audioInflight = {};
+
+  /// 正在进行 refresh 取链的曲目：并发的 refresh 合并成一次，别双打上游。
+  final Set<String> _audioRefreshing = {};
 
   List<Track> get tracks => _tracks;
 
@@ -84,6 +92,7 @@ class Library {
       ..clear()
       ..addEntries(_tracks.map((t) => MapEntry(t.trackKey, t)));
     _lyricCache.clear();
+    _lyricFailedAt.clear();
     _audioCache.clear();
   }
 
@@ -152,11 +161,23 @@ class Library {
   }
 
   /// 同一曲目的并发解析合并成一次，避免「预热 + 发布」同时打同一个上游接口。
+  ///
+  /// 失败不进正缓存，只记一个短冷却（[_lyricFailCooldown]）——把 null 缓存死的话，
+  /// 一次平台限频/网络抖动就会让这首歌在本进程里永远没词，直到重扫曲库。
   Future<MusicLyric?> lyricFor(String trackKey) {
     final id = EnodeLog.shortId(trackKey);
-    if (_lyricCache.containsKey(trackKey)) {
+    final cached = _lyricCache[trackKey];
+    if (cached != null) {
       EnodeLog.d('lyric', '$id 命中缓存');
-      return Future.value(_lyricCache[trackKey]);
+      return Future.value(cached);
+    }
+    final failedAt = _lyricFailedAt[trackKey];
+    if (failedAt != null) {
+      if (DateTime.now().difference(failedAt) < _lyricFailCooldown) {
+        EnodeLog.d('lyric', '$id 取词失败冷却中，暂不重试');
+        return Future.value(null);
+      }
+      _lyricFailedAt.remove(trackKey);
     }
     final running = _lyricInflight[trackKey];
     if (running != null) {
@@ -168,7 +189,13 @@ class Library {
       final lyric = await source.lyric(track);
       if (lyric.isEmpty) throw MusicSourceException(l10n.lyricsEmpty);
       return lyric;
-    }, store: (value) => _lyricCache[trackKey] = value);
+    }, store: (value) {
+      if (value != null) {
+        _lyricCache[trackKey] = value;
+      } else {
+        _lyricFailedAt[trackKey] = DateTime.now();
+      }
+    });
     _lyricInflight[trackKey] = future;
     return future.then((lyric) {
       watch.stop();
@@ -190,6 +217,14 @@ class Library {
     final id = EnodeLog.shortId(trackKey);
     if (refresh) {
       _audioCache.remove(trackKey);
+      // 进行中的取链若不是 refresh 发起的，一并作废：那条 inflight 拿回来的
+      // 可能就是救援路径正在躲的坏链；但**是** refresh 发起的就合并——
+      // 并发 refresh 只打一次上游，不双扣。
+      final running = _audioInflight[trackKey];
+      final runningIsRefresh = _audioRefreshing.contains(trackKey);
+      if (running != null && !runningIsRefresh) {
+        _audioInflight.remove(trackKey);
+      }
       EnodeLog.i('audio', '$id 强制重取直链');
     } else {
       final cached = _audioCache[trackKey];
@@ -223,6 +258,7 @@ class Library {
         if (value != null) _audioCache[trackKey] = (ref: value, at: DateTime.now());
       },
     );
+    if (refresh) _audioRefreshing.add(trackKey);
     _audioInflight[trackKey] = future;
     return future.then((ref) {
       watch.stop();
@@ -235,7 +271,11 @@ class Library {
         );
       }
       return ref;
-    }).whenComplete(() => _audioInflight.remove(trackKey));
+    }).whenComplete(() {
+      // 只摘自己：refresh 作废过旧 inflight 的话，表里登记的可能是新一条。
+      if (identical(_audioInflight[trackKey], future)) _audioInflight.remove(trackKey);
+      _audioRefreshing.remove(trackKey);
+    });
   }
 
   Future<Uri?> audioUriFor(String trackKey, {bool refresh = false}) =>

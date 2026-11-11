@@ -7,6 +7,7 @@ import 'package:window_manager/window_manager.dart';
 
 import 'autostart.dart';
 import '../l10n/l10n.dart';
+import '../log.dart';
 
 /// Windows 桌面常驻：托盘图标 + 关窗收进托盘 + 开机自启 + 退出确认。
 class WindowsHost with TrayListener, WindowListener {
@@ -60,22 +61,33 @@ class WindowsHost with TrayListener, WindowListener {
   }
 
   @override
-  void onTrayIconMouseDown() => unawaited(showWindow());
+  void onTrayIconMouseDown() => _guard('托盘单击', () => unawaited(showWindow()));
 
   @override
-  void onTrayIconRightMouseDown() => unawaited(trayManager.popUpContextMenu());
+  void onTrayIconRightMouseDown() => _guard('托盘右键', () => unawaited(trayManager.popUpContextMenu()));
 
-  @override
-  void onTrayMenuItemClick(MenuItem menuItem) {
-    switch (menuItem.key) {
-      case _openKey:
-        unawaited(showWindow());
-      case _autostartKey:
-        unawaited(_toggleAutostart(!(menuItem.checked ?? false)));
-      case _quitKey:
-        unawaited(quit());
+  /// 托盘与窗口事件都是**原生回调**：异常从这里逃出去会变成
+  /// `0xc000041d STATUS_FATAL_USER_CALLBACK_EXCEPTION`（WER 只报 flutter_windows.dll，
+  /// 看不出是哪一步）。所以每个入口先包一层，宁可少做一件事也不能让进程消失。
+  void _guard(String what, void Function() body) {
+    try {
+      body();
+    } catch (e, st) {
+      EnodeLog.e('tray', '$what 回调失败', e, st);
     }
   }
+
+  @override
+  void onTrayMenuItemClick(MenuItem menuItem) => _guard('托盘菜单 ${menuItem.key}', () {
+        switch (menuItem.key) {
+          case _openKey:
+            unawaited(showWindow());
+          case _autostartKey:
+            unawaited(_toggleAutostart(!(menuItem.checked ?? false)));
+          case _quitKey:
+            unawaited(quit());
+        }
+      });
 
   Future<void> _toggleAutostart(bool enable) async {
     await setAutostart(enable);
@@ -84,20 +96,38 @@ class WindowsHost with TrayListener, WindowListener {
 
   /// 点标题栏的叉只是收进托盘，播放与点歌服务继续跑。
   @override
-  void onWindowClose() => unawaited(windowManager.hide());
+  void onWindowClose() => _guard('关窗', () => unawaited(windowManager.hide()));
 
   Future<void> quit() async {
     if (_exiting) return;
     _exiting = true;
-    await showWindow();
+    EnodeLog.i('app', '退出：用户请求');
+    await _guardAsync('显示主窗', showWindow);
     if (!await _confirmExit()) {
       _exiting = false;
+      EnodeLog.i('app', '退出：已取消');
       return;
     }
-    await windowManager.setPreventClose(false);
-    await trayManager.destroy();
-    await onBeforeExit?.call();
+    // 逐段留痕：退出崩溃时最后一行日志就是崩在哪一步。
+    await _guardAsync('允许关窗', () => windowManager.setPreventClose(false));
+    await _guardAsync('销毁托盘图标', trayManager.destroy);
+    await _guardAsync('收尾（收投放窗/断 MQTT）', () async {
+      await onBeforeExit?.call();
+    });
+    EnodeLog.i('app', '退出：收尾完成，结束进程');
+    // 正常退出：撤掉运行标记，下次启动才不会误报「上次未正常退出」。
+    await EnodeLog.markCleanExit();
+    // 缓冲里还有几行没落盘，exit 会直接杀掉进程——先把日志刷出去。
+    await EnodeLog.close();
     exit(0);
+  }
+
+  Future<void> _guardAsync(String what, Future<void> Function() body) async {
+    try {
+      await body();
+    } catch (e, st) {
+      EnodeLog.e('app', '退出：$what 失败', e, st);
+    }
   }
 
   Future<bool> _confirmExit() async {

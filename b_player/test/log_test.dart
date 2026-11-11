@@ -57,4 +57,37 @@ void main() {
     expect(text, contains('boom'));
     expect(text, isNot(contains('password=abc')));
   });
+
+  test('上次没正常退出，下次启动要自己说出来', () async {
+    final dir = await Directory.systemTemp.createTemp('enode_log_mark');
+    addTearDown(() async {
+      await EnodeLog.close();
+      if (await dir.exists()) await dir.delete(recursive: true);
+    });
+    String logText() {
+      final files = dir.listSync().whereType<File>().where((f) => f.path.endsWith('.log'));
+      return files.isEmpty ? '' : files.map((f) => f.readAsStringSync()).join();
+    }
+
+    // 第一次启动后「崩溃」：只 close，不调 markCleanExit。
+    await EnodeLog.init(dir: dir);
+    expect(File('${dir.path}/.running').existsSync(), isTrue, reason: '启动就该留下运行标记');
+    await EnodeLog.close();
+
+    // 第二次启动应当认出上次没走完（close 会 flush，之后才能读）。
+    await EnodeLog.init(dir: dir);
+    await EnodeLog.close();
+    expect(logText(), contains('上次没有正常退出'));
+    expect(File('${dir.path}/.running').existsSync(), isTrue, reason: '这次又写下了新标记');
+
+    // 正常退出后标记该被撤掉。
+    await EnodeLog.markCleanExit();
+    expect(File('${dir.path}/.running').existsSync(), isFalse);
+
+    // 再启动一次，不该重复报警。
+    await EnodeLog.init(dir: dir);
+    await EnodeLog.markCleanExit();
+    await EnodeLog.close();
+    expect('上次没有正常退出'.allMatches(logText()).length, 1, reason: '只有那一次崩溃该被记下');
+  });
 }

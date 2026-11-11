@@ -250,7 +250,7 @@ class _VersionBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        child: Text('v$appVersion', style: kNums.copyWith(fontSize: 10.5, color: C.faint)),
+        child: Text('v$appVersionLabel', style: kNums.copyWith(fontSize: 10.5, color: C.faint)),
       );
 }
 

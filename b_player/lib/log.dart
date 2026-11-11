@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -32,10 +33,19 @@ class EnodeLog {
   static String? _lastError;
   static DebugPrintCallback? _console;
 
+  /// 「正在运行」标记：启动时写、正常退出时删。下次启动看到它还在，
+  /// 说明上次是被崩溃或强杀带走的——现场没人值守时，这是唯一能事后知道的线索。
+  /// 里面记下版本与启动时刻，崩溃后能直接对上是哪一版出的事。
+  static File? _runningMark;
+
+  /// 运行时版本号（`1.4.7+10`）。启动时读一次，日志与运行标记都用它。
+  static String _version = 'dev';
+
   /// 日志目录；未成功启用时为 null。
   static Directory? get directory => _dir;
   static bool get ready => _ready;
   static String? get lastError => _lastError;
+  static String get version => _version;
 
   /// 首次调用创建目录并清理过期文件；重复调用无副作用。
   static Future<void> init({Directory? dir}) async {
@@ -45,11 +55,57 @@ class EnodeLog {
       await target.create(recursive: true);
       _dir = target;
       _ready = true;
+      _version = await _readVersion();
       _prune();
-      i('log', '日志启用 dir=${target.path}');
+      i('log', '日志启用 v=$_version dir=${target.path}');
+      await _markRunning();
     } catch (e) {
       _lastError = '$e';
     }
+  }
+
+  /// 版本名 + 构建号。读不到就退回 `dev`：日志不能因为拿不到包信息而停摆。
+  static Future<String> _readVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (info.version.isEmpty) return 'dev';
+      return info.buildNumber.isEmpty ? info.version : '${info.version}+${info.buildNumber}';
+    } catch (_) {
+      return 'dev';
+    }
+  }
+
+  /// 写下运行标记，并检查上一次是不是没走到正常退出。
+  static Future<void> _markRunning() async {
+    final dir = _dir;
+    if (dir == null) return;
+    final mark = File(p.join(dir.path, '.running'));
+    _runningMark = mark;
+    try {
+      if (await mark.exists()) {
+        // 第一行版本、第二行启动时刻；老格式只有时刻。
+        final lines = (await mark.readAsString()).split('\n').map((l) => l.trim()).toList();
+        final prevVersion = lines.length >= 2 ? lines.first : '';
+        final prevAt = lines.length >= 2 ? lines.last : lines.first;
+        w(
+          'app',
+          '上次没有正常退出（崩溃或被强杀）：版本=${prevVersion.isEmpty ? '未知' : prevVersion}'
+          '${prevAt.isEmpty ? '' : ' 启动于 $prevAt'}',
+        );
+      }
+      await mark.writeAsString('$_version\n${DateTime.now()}', flush: true);
+    } catch (_) {
+      // 标记写不了不影响日志本身。
+    }
+  }
+
+  /// 正常退出前调用：删掉运行标记，下次启动就不会报「上次未正常退出」。
+  static Future<void> markCleanExit() async {
+    final mark = _runningMark;
+    if (mark == null) return;
+    try {
+      if (await mark.exists()) await mark.delete();
+    } catch (_) {}
   }
 
   /// 把全局 `debugPrint` 接到日志上：现有调用点不用改，第三方库的输出也一并落盘。

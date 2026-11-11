@@ -3,6 +3,8 @@ import 'dart:math';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../log.dart';
+
 /// 节点 ID：B端 首次启动时自己生成一个随机标识，写入本机后长期沿用。
 ///
 /// 为什么不拿设备硬件标识派生：批量部署常从同一份系统镜像克隆，
@@ -66,6 +68,10 @@ abstract final class NodeIdentity {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_prefsKey, id);
-    } catch (_) {}
+    } catch (e) {
+      // 完全静默的话：ID 只活在内存里，重启就换新号——中继的 TARGET_NODE 失联、
+      // 旧 retained 主题全部作废，现场日志里却一条线索都没有。
+      EnodeLog.w('app', 'nodeId 落盘失败，本次运行的 ID 重启后不保留：$e');
+    }
   }
 }

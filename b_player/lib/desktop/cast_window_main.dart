@@ -49,7 +49,13 @@ Future<bool> castWindowMain(List<String> args) async {
     return null;
   });
   // 回报主 isolate「这扇起来了」，它才敢建下一扇：并发改窗口样式会把整个进程干崩（#49 实测段错误，无 WER）。
-  await toMain.invokeMethod('castReady', {'monitorId': p['monitorId']});
+  // 应答带 stale 说明主进程已经放弃这扇窗（建窗超时后又被收掉）——就地销毁再退出，
+  // 否则它会变成一扇收不到任何指令、也关不掉的置顶幽灵窗。
+  final readyReply = await toMain.invokeMethod('castReady', {'monitorId': p['monitorId']});
+  if (readyReply is Map && readyReply['stale'] == true) {
+    await windowManager.destroy();
+    return true;
+  }
   runApp(MaterialApp(
     debugShowCheckedModeBanner: false,
     home: Scaffold(
@@ -57,9 +63,11 @@ Future<bool> castWindowMain(List<String> args) async {
       body: CastWindowView(
         model: model,
         // 网页起不来的时候把原因带回主 isolate，设置页要能看见是哪里不对。
-        onNote: (reason) => unawaited(toMain.invokeMethod('castNote', {
+        onNote: (reason, detail) => unawaited(toMain.invokeMethod('castNote', {
           'monitorId': p['monitorId'],
           'reason': reason,
+          // 原始异常文本：子进程不写日志，只有把它带回主进程才留得下。
+          'detail': ?detail,
         })),
       ),
     ),
@@ -269,7 +277,7 @@ class CastWindowView extends StatefulWidget {
   const CastWindowView({super.key, required this.model, this.onNote});
 
   final CastWindowModel model;
-  final void Function(String reason)? onNote;
+  final void Function(String reason, String? detail)? onNote;
 
   @override
   State<CastWindowView> createState() => _CastWindowViewState();
@@ -292,7 +300,9 @@ class _CastWindowViewState extends State<CastWindowView> {
   }
 
   Future<void> _boot() async {
-    if (!await castWebInitialize()) {
+    // 子窗是独立进程，用主进程那个 `cef` 目录会撞锁（CEF 的 profile 是独占的），
+    // 只会白白退回自绘并报「运行环境起不来」。原始异常由 castWebLastError 带回主进程记档。
+    if (!await castWebInitialize(cacheTag: 'cef-window')) {
       if (mounted) _fallback(l10n.castRuntimeMissing);
       return;
     }
@@ -354,7 +364,7 @@ class _CastWindowViewState extends State<CastWindowView> {
     _pageReady = false;
     setState(() => _failure = reason);
     unawaited(controller?.dispose());
-    widget.onNote?.call(reason);
+    widget.onNote?.call(reason, castWebLastError);
   }
 
   @override

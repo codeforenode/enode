@@ -23,7 +23,7 @@ guest/ (HTML/CSS/JS) ──HTTP── relay/ (Node.js) ──MQTT── broker �
 | [`b_player/`](b_player) | 边缘节点 App（Windows / Android / iOS）：本地目录与 WebDAV 曲库扫描、在线音源脚本执行层、MQTT 节点、权威队列、libmpv 播放、CEF 多屏投放 | Flutter 3.44 / Dart，`media_kit`、`mqtt_client`、`flutter_js` |
 | [`relay/`](relay) | HTTP → MQTT RPC 转换，静态托管 H5；限流、快照缓存、节点路由 | Node 18+，唯一依赖 `mqtt` |
 | [`guest/`](guest) | 静态 H5 客户端，无构建步骤；调用 `/api/state`、`/api/search`、`/api/enqueue` | 原生 HTML/CSS/JS |
-| [`docs/`](docs) | 边缘节点对接协议 v1（MQTT） | — |
+| [`docs/`](docs) | 边缘节点对接协议 v1（MQTT）、屏幕投放说明 | — |
 
 ## 协议要点
 

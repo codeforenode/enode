@@ -4,9 +4,11 @@ import 'dart:convert';
 import 'package:flutter/services.dart';
 
 import '../l10n/l10n.dart';
+import '../log.dart';
 import '../state/cast_settings.dart';
 import '../state/lrc.dart';
 import 'cast_web.dart';
+import 'monitor_rects.dart';
 
 /// Windows 投放的新通道：一块 canvas 纹理 + 每块屏一个原生 presenter 窗。
 ///
@@ -47,18 +49,28 @@ class CastCanvas {
   /// 最近一次失败原因；设置页原样显示。
   String? lastError;
 
+  /// 画布通道在本次运行内已不可恢复（运行时被 shutdown，一进程只能初始化一次）。
+  /// 置位后调用方不再因设置变更而重试画布，固定走一屏一窗，避免重试风暴。
+  bool get dead => _dead;
+  bool _dead = false;
+
   /// 勾选的屏 / 模式 / 分辨率变了才重建浏览器；只改样式不发新浏览器。
   /// 返回 false 表示这次起不来，调用方应退回旧通道。
   Future<bool> ensure(CastSettings s, List<CastMonitor> monitors) async {
+    // 物理矩形问 user32 拿（rcMonitor/rcWork），拿不到就回退「逻辑 × 缩放」。
+    // presenter 的 CreateWindowExW 吃物理像素，直接用逻辑坐标会在任何非 100%
+    // 缩放的屏上投错位置；rcMonitor 顺带把「任务栏在顶部的屏全屏偏移」也修了。
+    final physical = physicalMonitorRects();
     final tiles = <_Tile>[];
     final ids = <String>[];
     for (final t in s.activeTargets(monitors)) {
       final m = _monitorOf(monitors, t.monitorId);
       if (m == null) continue;
-      tiles.add(_Tile(castWindowBounds(m, t), castDesignSize(m, t)));
+      tiles.add(_Tile(castWindowBounds(m, t), castDesignSize(m, t), _physicalRect(m, t, physical)));
       ids.add(t.monitorId);
     }
     if (tiles.isEmpty) {
+      if (active) EnodeLog.i('cast', '投放计划为空，停画布并释放浏览器（CEF 运行时保留）');
       await stop();
       return false;
     }
@@ -81,6 +93,8 @@ class CastCanvas {
       return false;
     }
     try {
+      // 画布纹理与页面布局用逻辑像素（与设置页预览同一套单位），
+      // presenter 窗口用物理像素：UV 是比值，两套单位不串味。
       final union = tiles.map((t) => t.rect).reduce((a, b) => a.expandToInclude(b));
       final width = union.width.round();
       final height = union.height.round();
@@ -96,18 +110,19 @@ class CastCanvas {
         final w = t.rect.width.round();
         final h = t.rect.height.round();
         layout.add({'x': x, 'y': y, 'w': w, 'h': h, 'k': castScaleFor(t.design)});
+        final p = t.physical;
         presenters.add({
-          'x': t.rect.left.round(),
-          'y': t.rect.top.round(),
-          'w': w,
-          'h': h,
+          'x': p.left.round(),
+          'y': p.top.round(),
+          'w': p.width.round(),
+          'h': p.height.round(),
           'u0': x / width,
           'v0': y / height,
           'u1': (x + w) / width,
           'v1': (y + h) / height,
         });
       }
-      final result = await _channel.invokeMethod<Map<Object?, Object?>>('createBrowser', {
+      final result = await _createBrowser({
         'initialUrl': castCanvasPageUrl(),
         'mediaPlaybackRequiresUserGesture': false,
         // 不传 profileName：CEF 用一个新的内存上下文，画布不落盘任何数据。
@@ -123,10 +138,13 @@ class CastCanvas {
         lastError = l10n.castNoBrowserHandle;
         return false;
       }
-      if (shown <= 0) {
-        // 例如退回了软件渲染：画面没有原生 presenter 可显示，别开一块看不见的浏览器。
+      if (shown != tiles.length) {
+        // 0 = 没有任何 presenter（如退回软件渲染）；< tiles.length = 某块屏建窗/DX 失败。
+        // presenter 序号与屏的对应关系一旦缺一环就错位（右键菜单会关错屏），
+        // 画布是全有或全无：缺任何一块都整体放弃，交给一屏一窗通道逐屏兜底。
         await _dispose(id);
         lastError = l10n.castNoPresenter;
+        EnodeLog.w('cast', '画布 presenter 不完整：建成 $shown/${tiles.length}，放弃画布');
         return false;
       }
       _browserId = id;
@@ -135,15 +153,35 @@ class CastCanvas {
       _screenIds = ids;
       _layout = layout;
       _installEvents();
+      EnodeLog.i('cast', '画布浏览器已创建 browserId=$id 屏数=$shown 布局=${width}x$height');
       // 页面加载完会再整份重放；这里先排一次，页面已就绪时就不用等。
       unawaited(_eval('window.enodeCanvas.layout(${jsonEncode(layout)});'));
       return true;
+    } on PlatformException catch (e) {
+      // NOT_READY：插件运行时不在 kReady（已被 shutdown 或仍在复位中）。
+      // 绝不重试 initialize——那会把进程带崩；如实上报，让调用方本次退回一屏一窗。
+      // shutdown 过的运行时在进程内不可恢复，标记 dead 让调用方别再重试。
+      if (e.code == 'NOT_READY') {
+        _dead = true;
+        lastError = 'CEF 运行时未就绪（NOT_READY）：本次运行画布通道不可用';
+      } else {
+        lastError = '$e';
+      }
+      EnodeLog.w('cast', '画布 createBrowser 失败 code=${e.code}：${e.message}');
+      await stop();
+      return false;
     } catch (e) {
       lastError = '$e';
       await stop();
       return false;
     }
   }
+
+  /// 建浏览器。**绝不在失败后重新初始化 CEF**：一个进程只能初始化一次，
+  /// 第二次会 `INIT_FAILED` 并很快把进程带崩（0xc0000005）。
+  /// NOT_READY 只说明插件那边的运行时已经不可用，交给调用方退回自绘即可。
+  Future<Map<Object?, Object?>?> _createBrowser(Map<String, Object?> args) =>
+      _channel.invokeMethod<Map<Object?, Object?>>('createBrowser', args);
 
   /// 旧接口：只更新歌词样式（回退/兼容用，画布主路径用 [applyComposition]）。
   Future<void> applyStyle(CastStyle style) async {
@@ -199,6 +237,11 @@ class CastCanvas {
     _composition = const [];
     if (id == null) return;
     await _dispose(id);
+    // 注意：这里**不**重新初始化 CEF。原生 disposeBrowser 只是从 browsers_ 表里
+    // 摘掉浏览器句柄，运行时仍是 kReady，之后 createBrowser 直接可用——之前
+    // 「会话被清空、必须重新初始化」是误判：一个进程二次 initialize() 必
+    // INIT_FAILED，并很快把进程带崩（0xc0000005）。关了再开，靠的是复用
+    // 已初始化的运行时重建浏览器，而不是重跑 initialize。
   }
 
   /// 页面每次导航（含重建）后 window.enode 都是新的，必须整份重推。
@@ -232,10 +275,9 @@ class CastCanvas {
     await _compose();
     final p = <String, Object?>{};
     if (_style != null) p['style'] = _style;
-    if (_lyric != null) {
-      p['lines'] = _lyric!['lines'];
-      p['nowPlaying'] = _lyric!['nowPlaying'];
-    }
+    // 整份重发（含 noLyrics/idle/nowPlaying）：页面重载后 window.enode 归零，
+    // 手工拆字段会把这些漏掉，闲时引导语和占位文案要等下一次歌词变化才回来。
+    if (_lyric != null) p.addAll(_lyric!);
     if (_tick != null) p['tick'] = _tick!['tick'];
     if (p.isNotEmpty) await _eval('window.enodeCanvas.push(${jsonEncode(p)});');
   }
@@ -269,10 +311,41 @@ class CastCanvas {
     }
     return null;
   }
+
+  /// 该投放区在桌面上的**物理像素**矩形（给 presenter 窗口用）。
+  ///
+  /// 优先用 user32 的 rcMonitor/rcWork 精确值（顺带修「任务栏在顶部的屏全屏偏移」）；
+  /// 匹配不上就退回「逻辑矩形 × 该屏缩放」——screen_retriever 的逻辑坐标本来就是
+  /// 物理坐标除以缩放，乘回去在取整误差内是准的。
+  static Rect _physicalRect(
+      CastMonitor m, CastTarget t, List<PhysicalMonitorRects> physical) {
+    final logical = castWindowBounds(m, t);
+    final predictedWork = Rect.fromLTWH(
+        m.workOrigin.dx * m.scale, m.workOrigin.dy * m.scale, m.workSize.width * m.scale, m.workSize.height * m.scale);
+    final match = matchPhysicalRect(predictedWork: predictedWork, all: physical);
+    if (match != null) {
+      if (t.mode == CastMode.fullscreen) return match.monitor;
+      return Rect.fromLTWH(
+        match.work.left + t.region.left * match.work.width,
+        match.work.top + t.region.top * match.work.height,
+        t.region.width * match.work.width,
+        t.region.height * match.work.height,
+      );
+    }
+    return Rect.fromLTWH(logical.left * m.scale, logical.top * m.scale,
+        logical.width * m.scale, logical.height * m.scale);
+  }
 }
 
 class _Tile {
-  _Tile(this.rect, this.design);
+  _Tile(this.rect, this.design, this.physical);
+
+  /// 画布/页面侧的逻辑像素矩形（与设置页预览同一套单位）。
   final Rect rect;
+
+  /// 设计尺寸（逻辑像素），字号折算基准。
   final Size design;
+
+  /// presenter 窗口的物理像素矩形。
+  final Rect physical;
 }

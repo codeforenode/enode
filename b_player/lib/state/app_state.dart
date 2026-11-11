@@ -118,6 +118,12 @@ class AppState extends ChangeNotifier {
   /// 入队取链的时间预算：中继等节点应答上限是 9s，这里留出余量。
   static const _enqueueResolveBudget = Duration(seconds: 6);
 
+  /// 播放取链的时间预算。这里没有中继在等，可以宽一些，但**必须有上限**：
+  /// 最坏情况是「平台数 × 脚本数 × 每脚本 15s」的乘法放大，可达分钟级——
+  /// 期间 B/C 两端都停在加载中、无报错无事件，看门狗在取链阶段又恰好被取消，
+  /// 队列等于卡死。15s 内出不来就按取链失败跳歌。
+  static const _playResolveBudget = Duration(seconds: 15);
+
   /// 兜底映射的预算：映射和取链共用那 9s，给取链留大头。
   static const _remapBudget = Duration(seconds: 3);
 
@@ -335,7 +341,35 @@ class AppState extends ChangeNotifier {
   void bindCastWindows() {
     if (_disposed || _castWindows != null) return;
     _castWindows = CastWindows(this);
+    _startMonitorWatch();
   }
+
+  /// 显示器拓扑轮询。Windows 不把 WM_DISPLAYCHANGE 回调给到 Flutter 侧，
+  /// KTV 现场拔插 HDMI 又是常态——8 秒一轮的轻量比对（无变化时只扫不存），
+  /// 拔掉的屏收窗、新插的屏按已存配置补投，投放状态才不会和硬件脱节。
+  Timer? _monitorWatch;
+
+  void _startMonitorWatch() {
+    _monitorWatch?.cancel();
+    _monitorWatch = Timer.periodic(const Duration(seconds: 8), (_) {
+      unawaited(_watchMonitors());
+    });
+  }
+
+  Future<void> _watchMonitors() async {
+    if (_disposed) return;
+    final monitors = await scanCastMonitors();
+    if (_disposed) return;
+    if (_monitorSignature(monitors) == _monitorSignature(_castMonitors)) return;
+    EnodeLog.i('cast', '显示器拓扑变化：${_castMonitors.length} → ${monitors.length} 块，重扫投放屏');
+    await rescanCastMonitors();
+  }
+
+  static String _monitorSignature(List<CastMonitor> monitors) => [
+        for (final m in monitors)
+          '${m.id}|${m.workOrigin.dx.round()},${m.workOrigin.dy.round()}'
+              '|${m.fullSize.width.round()}x${m.fullSize.height.round()}|${m.scale}',
+      ].join(';');
 
   /// 退出进程前先把投放窗收干净，否则子引擎的窗口会黑在屏幕上。
   Future<void> closeCastWindows() => _castWindows?.closeAll() ?? Future.value();
@@ -644,7 +678,10 @@ class AppState extends ChangeNotifier {
 
     AudioRef? resolved;
     try {
-      resolved = await library.audioFor(head.trackKey);
+      resolved = await library.audioFor(head.trackKey).timeout(_playResolveBudget);
+    } on TimeoutException {
+      EnodeLog.w('player', '#$gen 取链超过 ${_playResolveBudget.inSeconds}s，放弃这首');
+      resolved = null;
     } catch (_) {
       resolved = null;
     }
@@ -669,7 +706,13 @@ class AppState extends ChangeNotifier {
         if (attempt > 0 || !network) break;
         EnodeLog.w('player', '#$gen 打开失败，重取直链后再试一次');
         library.invalidateAudio(head.trackKey);
-        final refetched = await library.audioFor(head.trackKey, refresh: true);
+        AudioRef? refetched;
+        try {
+          refetched = await library.audioFor(head.trackKey, refresh: true).timeout(_playResolveBudget);
+        } on TimeoutException {
+          EnodeLog.w('player', '#$gen 重取直链超过 ${_playResolveBudget.inSeconds}s');
+          refetched = null;
+        }
         if (refetched == null) break;
         current = refetched;
       }
@@ -704,6 +747,12 @@ class AppState extends ChangeNotifier {
       if (_disposed || gen != _playGen) return;
       final np = nowPlaying;
       if (np == null || np.positionMs > 0) return;
+      if (!playing) {
+        // 暂停中（含切上一首后 seek 到 0 却还没出进度事件）：不动它，
+        // 重新计时等恢复播放——「暂停太久被判死」比「坏链晚 8 秒跳掉」伤得多。
+        _armWatchdog(head, gen, allowRecover: allowRecover);
+        return;
+      }
       EnodeLog.w('player', '#$gen ${watchdogPeriod.inSeconds}s 没进度，按直链过期处理');
       if (allowRecover && await _recoverStaleLink(head, gen)) {
         _armWatchdog(head, gen, allowRecover: false);
@@ -721,7 +770,10 @@ class AppState extends ChangeNotifier {
     library.invalidateAudio(head.trackKey);
     AudioRef? refetched;
     try {
-      refetched = await library.audioFor(head.trackKey, refresh: true);
+      refetched = await library.audioFor(head.trackKey, refresh: true).timeout(_playResolveBudget);
+    } on TimeoutException {
+      EnodeLog.w('player', '#$gen 救援取链超过 ${_playResolveBudget.inSeconds}s');
+      refetched = null;
     } catch (_) {
       refetched = null;
     }
@@ -1060,6 +1112,8 @@ class AppState extends ChangeNotifier {
     webDav?.removeListener(_onWebDavChanged);
     webDav?.dispose();
     _castWindows?.dispose();
+    _monitorWatch?.cancel();
+    _monitorWatch = null;
     _tick?.cancel();
     _cancelWatchdog();
     unawaited(_positionSub?.cancel());

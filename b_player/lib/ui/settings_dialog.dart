@@ -349,7 +349,7 @@ class _About extends StatelessWidget {
         SecretTap(
           key: const Key('aboutVersionTap'),
           onUnlock: onOpenSources,
-          child: _Row(k: t.aboutVersion, v: 'v$appVersion'),
+          child: _Row(k: t.aboutVersion, v: 'v$appVersionLabel'),
         ),
         if (update != null)
           ListenableBuilder(

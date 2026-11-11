@@ -48,14 +48,12 @@ FlutterChromiumWebviewPlugin::FlutterChromiumWebviewPlugin(
   if (auto* view = registrar_->GetView()) {
     keyboard_ = std::make_unique<CefKeyboard>(view->GetNativeWindow());
   }
-  window_proc_id_ = registrar_->RegisterTopLevelWindowProcDelegate(
-      [plugin_pointer = this](HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) -> std::optional<LRESULT> {
-        if (message == WM_CLOSE) {
-          plugin_pointer->CloseAll();
-          CefRuntimeManager::GetInstance()->Shutdown();
-        }
-        return std::nullopt;
-      });
+  // Deliberately NO WM_CLOSE handling here. The host app hides its main window
+  // to the tray on close instead of exiting; shutting the CEF runtime down on
+  // WM_CLOSE made the runtime unrecoverable (kShutdown, one init per process),
+  // so reopening the cast canvas only ever got NOT_READY. Browser lifetime is
+  // owned by the Dart layer via disposeBrowser; final cleanup happens in the
+  // destructor when the engine actually tears down.
 }
 
 FlutterChromiumWebviewPlugin::~FlutterChromiumWebviewPlugin() {
@@ -66,7 +64,6 @@ FlutterChromiumWebviewPlugin::~FlutterChromiumWebviewPlugin() {
   if (FlutterDesktopMessengerIsAvailable(messenger_)) {
     channel_->SetMethodCallHandler(nullptr);
   }
-  registrar_->UnregisterTopLevelWindowProcDelegate(window_proc_id_);
   CloseAll();
   keyboard_.reset();
   CefRuntimeManager::GetInstance()->Shutdown();
