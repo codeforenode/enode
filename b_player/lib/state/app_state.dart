@@ -44,11 +44,9 @@ class QueueItem {
   /// 扫描/元数据给出的时长；引擎打开成功后会用实际时长覆盖。
   int durationMs;
 
-  /// 接入方传入的原始桌号字符串，B端 不做格式解释；null 表示本机添加。
+  /// 接入方传入的原始桌号字符串，B端 不做格式解释；null 表示这条没带桌号。
   final String? seat;
   int positionMs;
-
-  String get seatLabel => seat ?? l10n.seatLocal;
 }
 
 /// B端 的本地状态：曲库、权威队列、播放进度。
@@ -234,6 +232,7 @@ class AppState extends ChangeNotifier {
     if (!(_permission?.canReadLibrary ?? true)) {
       _scanning = false;
       _scanError = _permission!.summary;
+      EnodeLog.w('library', '没有读取曲库的权限，跳过扫描：${_permission!.summary}');
       notifyListeners();
       return;
     }
@@ -253,6 +252,7 @@ class AppState extends ChangeNotifier {
     } catch (e) {
       _scanning = false;
       _scanError = l10n.scanFailed('$e');
+      EnodeLog.e('library', '扫描异常 dir=${source.root}', e);
       notifyListeners();
       return;
     }
@@ -405,13 +405,24 @@ class AppState extends ChangeNotifier {
   Future<void> saveOnlineSources(List<LxSourceEntry> sources) async {
     final source = onlineSource;
     if (source == null) return;
+    final before = library.canSearch;
     source.applySources(sources);
     library.clearAudioCache();
     await LxSourceStore().save(sources);
+    // 脚本增删是 caps 里有没有 search 的唯一原因，也是 C端 从「能搜」变成
+    // 「本店暂未开通在线点歌」的那一刻。记下来才好和现场的反馈对上时间。
+    final enabled = sources.where((s) => s.enabled).length;
+    EnodeLog.i(
+      'source',
+      '音源脚本已更新 启用=$enabled/${sources.length}'
+      ' 检索能力 ${_onOff(before)}→${_onOff(library.canSearch)}',
+    );
     notifyListeners();
     // 导入/停用脚本会改变 caps 里有没有 search，立刻重发一次健康状态。
     edge.publishHealth();
   }
+
+  static String _onOff(bool value) => value ? '可用' : '不可用';
 
   /// 用独立上下文试跑一个音源，不动当前正在用的实例。
   /// 返回结构化结果：消息只用于展示，调用方不再靠文案前缀判断成败。
@@ -588,6 +599,7 @@ class AppState extends ChangeNotifier {
 
   void _onEngineCompleted() {
     if (_disposed || _loading || queue.isEmpty) return;
+    EnodeLog.i('player', '#$_playGen 播放结束，自动切下一首');
     _advanceHead();
   }
 
@@ -596,7 +608,13 @@ class AppState extends ChangeNotifier {
     final text = message.trim();
     if (text.isEmpty) return;
     _playbackError = _readablePlaybackError(text);
+    EnodeLog.w('player', '#$_playGen 引擎报错：$_playbackError');
     notifyListeners();
+  }
+
+  static String _fmt(int ms) {
+    final total = (ms < 0 ? 0 : ms) ~/ 1000;
+    return '${(total ~/ 60).toString().padLeft(2, '0')}:${(total % 60).toString().padLeft(2, '0')}';
   }
 
   /// libmpv 的报错是英文，操作员只需要知道“这歌放不了”。
@@ -621,6 +639,7 @@ class AppState extends ChangeNotifier {
 
     _loading = true;
     head.positionMs = 0;
+    EnodeLog.i('player', '#$gen 开始加载《${head.title}》/${head.artist}');
     notifyListeners();
 
     AudioRef? resolved;
@@ -648,6 +667,7 @@ class AppState extends ChangeNotifier {
         // 在线直链有时效，第一次打不开就强制重新取链再试一次；本地文件没有这一步。
         final network = current.uri.isScheme('http') || current.uri.isScheme('https');
         if (attempt > 0 || !network) break;
+        EnodeLog.w('player', '#$gen 打开失败，重取直链后再试一次');
         library.invalidateAudio(head.trackKey);
         final refetched = await library.audioFor(head.trackKey, refresh: true);
         if (refetched == null) break;
@@ -661,7 +681,7 @@ class AppState extends ChangeNotifier {
       return;
     }
     // 只记来源 host：直链的 path 与 query 可能带签名，不该进日志。
-    EnodeLog.i('player', '开播《${head.title}》 ${current.uri.scheme}://${current.uri.host}');
+    EnodeLog.i('player', '#$gen 开播《${head.title}》 ${current.uri.scheme}://${current.uri.host}');
 
     _loading = false;
     try {
@@ -684,6 +704,7 @@ class AppState extends ChangeNotifier {
       if (_disposed || gen != _playGen) return;
       final np = nowPlaying;
       if (np == null || np.positionMs > 0) return;
+      EnodeLog.w('player', '#$gen ${watchdogPeriod.inSeconds}s 没进度，按直链过期处理');
       if (allowRecover && await _recoverStaleLink(head, gen)) {
         _armWatchdog(head, gen, allowRecover: false);
         return;
@@ -704,11 +725,16 @@ class AppState extends ChangeNotifier {
     } catch (_) {
       refetched = null;
     }
-    if (refetched == null || _disposed || gen != _playGen) return false;
+    if (refetched == null || _disposed || gen != _playGen) {
+      EnodeLog.w('player', '#$gen 救援失败：重取不到直链');
+      return false;
+    }
     try {
       await e.open(refetched.uri, autoplay: playing, headers: refetched.headers);
+      EnodeLog.i('player', '#$gen 救援成功，新直链已重开');
       return true;
-    } catch (_) {
+    } catch (e) {
+      EnodeLog.w('player', '#$gen 救援失败：新直链也打不开', e);
       return false;
     }
   }
@@ -721,7 +747,7 @@ class AppState extends ChangeNotifier {
   void _failAndSkip(String message, int gen) {
     if (_disposed || gen != _playGen) return;
     _playbackError = message;
-    EnodeLog.w('player', '跳过 ${nowPlaying?.title ?? ''}：$message');
+    EnodeLog.w('player', '#$gen 跳过《${nowPlaying?.title ?? ''}》：$message');
     _advanceHead();
   }
 
@@ -748,6 +774,7 @@ class AppState extends ChangeNotifier {
     if (engine != null) {
       unawaited(playing ? engine!.play() : engine!.pause());
     }
+    EnodeLog.i('player', '${playing ? '继续播放' : '暂停'} 位置=${_fmt(nowPlaying?.positionMs ?? 0)}');
     notifyListeners();
     edge.notifyPlayback();
   }
@@ -755,12 +782,14 @@ class AppState extends ChangeNotifier {
   /// 「下一首」：移出队首让后面顶上。
   void skip() {
     if (queue.isEmpty) return;
+    EnodeLog.i('player', '手动下一首（当前《${nowPlaying?.title ?? ''}》）');
     _advanceHead();
   }
 
   /// 「上一首」：没有历史队列，回到当前曲目开头。
   void previous() {
     if (nowPlaying == null) return;
+    EnodeLog.i('player', '回到开头（上一首）');
     seekTo(0);
   }
 
@@ -770,6 +799,7 @@ class AppState extends ChangeNotifier {
     final upper = head.durationMs > 0 ? head.durationMs : (1 << 31);
     final ms = positionMs.clamp(0, upper);
     head.positionMs = ms;
+    EnodeLog.d('player', 'seek 到 ${_fmt(ms)}');
     notifyListeners();
     unawaited(engine?.seek(Duration(milliseconds: ms)));
     if (engine != null) edge.notifyPlayback();
@@ -777,12 +807,14 @@ class AppState extends ChangeNotifier {
 
   void setVolume(double value) {
     volume = value.clamp(0.0, 1.0);
+    EnodeLog.d('player', '音量 ${volume.toStringAsFixed(2)}');
     notifyListeners();
     unawaited(engine?.setVolume(volume));
   }
 
   void removeAt(int i) {
     if (i < 0 || i >= queue.length) return;
+    EnodeLog.i('queue', '删除第 ${i + 1} 首《${queue[i].title}》');
     queue.removeAt(i);
     final headChanged = i == 0;
     if (headChanged) {
@@ -835,20 +867,33 @@ class AppState extends ChangeNotifier {
     // 映射不到才算真的没有。
     if (track == null) {
       track = await _remapTrack(req);
-      if (track == null) return const EnqueueResult.rejected(errTrackNotFound);
+      if (track == null) {
+        EnodeLog.w(
+          'queue',
+          '拒绝 ${EnodeLog.shortId(req.trackKey)}：本机没有这首，兜底映射也失败',
+        );
+        return const EnqueueResult.rejected(errTrackNotFound);
+      }
     }
     if (queue.length >= 200) {
+      EnodeLog.w('queue', '拒绝《${track.title}》：队列已满 200');
       return const EnqueueResult.rejected(errQueueFull, '前面排队的人太多了，稍后再点');
     }
     try {
       final uri = await library.audioUriFor(track.trackKey).timeout(_enqueueResolveBudget);
       if (uri == null) {
+        EnodeLog.w('queue', '拒绝《${track.title}》：取不到播放地址');
         return const EnqueueResult.rejected(errSourceUnavailable, '这首歌本店暂时放不了，换一首试试');
       }
     } on TimeoutException {
+      EnodeLog.w('queue', '拒绝《${track.title}》：取链超过 ${_enqueueResolveBudget.inSeconds}s');
       return const EnqueueResult.rejected(errSourceUnavailable, '取链超时，稍后再点一次试试');
     }
     final wasEmpty = queue.isEmpty;
+    EnodeLog.i(
+      'queue',
+      '接受《${track.title}》/${track.artist} seat=${req.seat ?? '未提供'} 队列=${queue.length + 1}',
+    );
     queue.add(QueueItem(
       trackKey: track.trackKey,
       title: track.title,
@@ -965,12 +1010,25 @@ class AppState extends ChangeNotifier {
   Future<Map<String, Object?>?> _lyric() async {
     final np = nowPlaying;
     if (np == null) return null;
+    final id = EnodeLog.shortId(np.trackKey);
+    final watch = Stopwatch()..start();
     final lyric = await library.lyricFor(np.trackKey);
     final raw = lyric?.lyric ?? '';
-    if (raw.trim().isEmpty) return null;
+    if (raw.trim().isEmpty) {
+      EnodeLog.w('lyric', '$id 上游没有给出歌词 ${watch.elapsedMilliseconds}ms');
+      return null;
+    }
     // 对外协议只发标准 LRC：逐字格式在本地解析后压回行级文本。
     final text = toLrcText(parseLyric(raw, format: lyric?.format ?? 'lrc'));
-    if (text.trim().isEmpty) return null;
+    if (text.trim().isEmpty) {
+      EnodeLog.w('lyric', '$id 解析后为空 format=${lyric?.format}');
+      return null;
+    }
+    EnodeLog.i(
+      'lyric',
+      '$id 就绪 ${text.length} 字符 format=${lyric?.format} '
+      'offset=${_cast.style.offsetMs} ${watch.elapsedMilliseconds}ms',
+    );
     // 偏移取投放设置里那一份：墙上字幕和手机端的词要按同一个量挪。
     return {'trackKey': np.trackKey, 'format': 'lrc', 'offsetMs': _cast.style.offsetMs, 'text': text};
   }

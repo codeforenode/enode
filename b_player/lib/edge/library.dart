@@ -1,6 +1,7 @@
 import 'music_info.dart';
 import 'music_source.dart';
 import '../l10n/l10n.dart';
+import '../log.dart';
 
 export 'music_info.dart';
 export 'music_source.dart';
@@ -152,32 +153,65 @@ class Library {
 
   /// 同一曲目的并发解析合并成一次，避免「预热 + 发布」同时打同一个上游接口。
   Future<MusicLyric?> lyricFor(String trackKey) {
-    if (_lyricCache.containsKey(trackKey)) return Future.value(_lyricCache[trackKey]);
+    final id = EnodeLog.shortId(trackKey);
+    if (_lyricCache.containsKey(trackKey)) {
+      EnodeLog.d('lyric', '$id 命中缓存');
+      return Future.value(_lyricCache[trackKey]);
+    }
     final running = _lyricInflight[trackKey];
-    if (running != null) return running;
+    if (running != null) {
+      EnodeLog.d('lyric', '$id 合并到进行中的取词');
+      return running;
+    }
+    final watch = Stopwatch()..start();
     final future = _resolve(trackKey, MusicSourceCapability.lyric, (source, track) async {
       final lyric = await source.lyric(track);
       if (lyric.isEmpty) throw MusicSourceException(l10n.lyricsEmpty);
       return lyric;
     }, store: (value) => _lyricCache[trackKey] = value);
     _lyricInflight[trackKey] = future;
-    return future.whenComplete(() => _lyricInflight.remove(trackKey));
+    return future.then((lyric) {
+      watch.stop();
+      if (lyric == null) {
+        EnodeLog.w('lyric', '$id 取词失败 ${watch.elapsedMilliseconds}ms');
+      } else {
+        EnodeLog.i(
+          'lyric',
+          '$id 取词成功 ${lyric.lyric.length} 字符 format=${lyric.format} ${watch.elapsedMilliseconds}ms',
+        );
+      }
+      return lyric;
+    }).whenComplete(() => _lyricInflight.remove(trackKey));
   }
 
   /// 解析播放地址与请求头。[refresh] 丢弃缓存强制重新取链；失败结果不写缓存，
   /// 这样补导入音源脚本后同一首可以立刻再试。
   Future<AudioRef?> audioFor(String trackKey, {bool refresh = false}) {
+    final id = EnodeLog.shortId(trackKey);
     if (refresh) {
       _audioCache.remove(trackKey);
+      EnodeLog.i('audio', '$id 强制重取直链');
     } else {
       final cached = _audioCache[trackKey];
       if (cached != null) {
-        if (DateTime.now().difference(cached.at) <= _audioTtl) return Future.value(cached.ref);
+        final age = DateTime.now().difference(cached.at);
+        if (age <= _audioTtl) {
+          EnodeLog.d('audio', '$id 命中缓存 age=${age.inSeconds}s');
+          return Future.value(cached.ref);
+        }
+        EnodeLog.i(
+          'audio',
+          '$id 缓存过期 age=${age.inMinutes}m（阈值 ${_audioTtl.inMinutes}m），重新取链',
+        );
         _audioCache.remove(trackKey);
       }
     }
     final running = _audioInflight[trackKey];
-    if (running != null) return running;
+    if (running != null) {
+      EnodeLog.d('audio', '$id 合并到进行中的取链');
+      return running;
+    }
+    final watch = Stopwatch()..start();
     final future = _resolve(
       trackKey,
       MusicSourceCapability.audio,
@@ -190,7 +224,18 @@ class Library {
       },
     );
     _audioInflight[trackKey] = future;
-    return future.whenComplete(() => _audioInflight.remove(trackKey));
+    return future.then((ref) {
+      watch.stop();
+      if (ref == null) {
+        EnodeLog.w('audio', '$id 取链失败 ${watch.elapsedMilliseconds}ms');
+      } else {
+        EnodeLog.i(
+          'audio',
+          '$id 取链成功 ${watch.elapsedMilliseconds}ms ${ref.uri.scheme}://${ref.uri.host}',
+        );
+      }
+      return ref;
+    }).whenComplete(() => _audioInflight.remove(trackKey));
   }
 
   Future<Uri?> audioUriFor(String trackKey, {bool refresh = false}) =>

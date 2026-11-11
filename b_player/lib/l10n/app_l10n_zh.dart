@@ -120,6 +120,12 @@ class AppL10nZh extends AppL10n {
   String get aboutOpenLog => '開啟日誌資料夾';
 
   @override
+  String get copy => '複製';
+
+  @override
+  String get copyDone => '已複製';
+
+  @override
   String get aboutOpenSource => '開源授權';
 
   @override
@@ -1811,6 +1817,15 @@ class AppL10nZh extends AppL10n {
   String get screenTypeTextDesc => '靜態文字';
 
   @override
+  String get screenTypeIdleText => '閒時引導語';
+
+  @override
+  String get screenTypeIdleTextDesc => '無曲目時自動顯示';
+
+  @override
+  String get screenIdleNote => '只在沒有曲目、隊列也空時顯示，一有歌就自動隱藏';
+
+  @override
   String get sourcesTitle => '音源';
 
   @override
@@ -2096,6 +2111,12 @@ class AppL10nZhHans extends AppL10nZh {
 
   @override
   String get aboutOpenLog => '打开日志目录';
+
+  @override
+  String get copy => '复制';
+
+  @override
+  String get copyDone => '已复制';
 
   @override
   String get aboutOpenSource => '开源许可';
@@ -3788,6 +3809,15 @@ class AppL10nZhHans extends AppL10nZh {
   String get screenTypeTextDesc => '静态文字';
 
   @override
+  String get screenTypeIdleText => '闲时引导语';
+
+  @override
+  String get screenTypeIdleTextDesc => '无曲目时自动显示';
+
+  @override
+  String get screenIdleNote => '只在没有曲目、队列也空时显示，一有歌就自动隐藏';
+
+  @override
   String get sourcesTitle => '音源';
 
   @override
@@ -4073,6 +4103,12 @@ class AppL10nZhHant extends AppL10nZh {
 
   @override
   String get aboutOpenLog => '開啟日誌資料夾';
+
+  @override
+  String get copy => '複製';
+
+  @override
+  String get copyDone => '已複製';
 
   @override
   String get aboutOpenSource => '開源授權';
@@ -5764,6 +5800,15 @@ class AppL10nZhHant extends AppL10nZh {
 
   @override
   String get screenTypeTextDesc => '靜態文字';
+
+  @override
+  String get screenTypeIdleText => '閒時引導語';
+
+  @override
+  String get screenTypeIdleTextDesc => '無曲目時自動顯示';
+
+  @override
+  String get screenIdleNote => '只在沒有曲目、隊列也空時顯示，一有歌就自動隱藏';
 
   @override
   String get sourcesTitle => '音源';

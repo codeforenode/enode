@@ -327,6 +327,7 @@ class _ScreenCastPanelState extends State<ScreenCastPanel> {
         CastMaterialType.image => t.screenTypeImage,
         CastMaterialType.video => t.screenTypeVideo,
         CastMaterialType.text => t.screenTypeText,
+        CastMaterialType.idleText => t.screenTypeIdleText,
       };
 
   String _typeDesc(AppL10n t, CastMaterialType type) => switch (type) {
@@ -335,10 +336,12 @@ class _ScreenCastPanelState extends State<ScreenCastPanel> {
         CastMaterialType.image => t.screenTypeImageDesc,
         CastMaterialType.video => t.screenTypeVideoDesc,
         CastMaterialType.text => t.screenTypeTextDesc,
+        CastMaterialType.idleText => t.screenTypeIdleTextDesc,
       };
 
   String _typeTag(AppL10n t, CastMaterialType type) => switch (type) {
-        CastMaterialType.lyric || CastMaterialType.text => t.screenTagLight,
+        CastMaterialType.lyric || CastMaterialType.text || CastMaterialType.idleText =>
+          t.screenTagLight,
         CastMaterialType.url || CastMaterialType.video => t.screenTagHeavy,
         CastMaterialType.image => t.screenTagNormal,
       };
@@ -349,6 +352,7 @@ class _ScreenCastPanelState extends State<ScreenCastPanel> {
         CastMaterialType.image => Icons.image_outlined,
         CastMaterialType.video => Icons.movie_outlined,
         CastMaterialType.text => Icons.title_rounded,
+        CastMaterialType.idleText => Icons.tips_and_updates_outlined,
       };
 
   Color _typeColor(CastMaterialType type) {
@@ -359,6 +363,7 @@ class _ScreenCastPanelState extends State<ScreenCastPanel> {
       CastMaterialType.image => C.info,
       CastMaterialType.video => C.warn,
       CastMaterialType.text => light ? const Color(0xFFC04C8A) : const Color(0xFFF0A6CA),
+      CastMaterialType.idleText => light ? const Color(0xFF1E8E7E) : const Color(0xFF6FE0CF),
     };
   }
 
@@ -380,6 +385,8 @@ class _ScreenCastPanelState extends State<ScreenCastPanel> {
         CastMaterialType.image => (x: .3, y: .3, w: .4, h: .3),
         CastMaterialType.video => (x: .3, y: .3, w: .4, h: .3),
         CastMaterialType.text => (x: .2, y: .4, w: .6, h: .15),
+        // 闲时引导语是「没人点歌时」的整块提示，默认给居中偏下的一条。
+        CastMaterialType.idleText => (x: .15, y: .42, w: .7, h: .18),
       };
 
   CastMaterial _newMaterial(CastMaterialType type, String name) => switch (type) {
@@ -390,7 +397,8 @@ class _ScreenCastPanelState extends State<ScreenCastPanel> {
             id: newCastId('m'), type: type, name: name, fit: CastFit.cover),
         CastMaterialType.video => CastMaterial(
             id: newCastId('m'), type: type, name: name, fit: CastFit.cover, loop: true, autoplay: true),
-        CastMaterialType.text => CastMaterial(id: newCastId('m'), type: type, name: name, text: ''),
+        CastMaterialType.text || CastMaterialType.idleText =>
+          CastMaterial(id: newCastId('m'), type: type, name: name, text: ''),
       };
 
   void _addMaterial(CastMaterialType type, {Offset? at}) {
@@ -1362,7 +1370,7 @@ class _ScreenCastPanelState extends State<ScreenCastPanel> {
           durationMs: _durationMs,
           placeholder: widget.state.nowPlaying != null ? t.castNoLyrics : '',
         );
-      case CastMaterialType.text:
+      case CastMaterialType.text || CastMaterialType.idleText:
         final color = Color(m.color);
         final align = switch (m.align) {
           CastAlign.left => TextAlign.left,
@@ -1906,7 +1914,8 @@ class _ScreenCastPanelState extends State<ScreenCastPanel> {
         CastMaterialType.url => _urlSections(t, m, p),
         CastMaterialType.image => _imageSections(t, m),
         CastMaterialType.video => _videoSections(t, m, p),
-        CastMaterialType.text => _textSections(t, m),
+        // 闲时引导语和静态文字共用同一组排版设置，多出来的只是「什么时候显示」。
+        CastMaterialType.text || CastMaterialType.idleText => _textSections(t, m),
       };
 
   Widget _section({required String title, String? trailing, required List<Widget> children}) => Container(
@@ -2348,6 +2357,7 @@ class _ScreenCastPanelState extends State<ScreenCastPanel> {
             ),
           ),
           _note(Icons.title_rounded, t.screenTextNote),
+          if (m.isIdleOnly) _note(Icons.schedule_rounded, t.screenIdleNote),
         ]),
       ];
 

@@ -105,6 +105,7 @@ Map<String, Object?> castWebLyric(
   String? seat,
   int durationMs = 0,
   bool hasTrack = false,
+  bool idle = false,
 }) =>
     {
       // 行 = [起点, 文本, 行尾, 逐字?]；逐字 = [起点, 终点, 文本]，空行省掉最后一段。
@@ -129,6 +130,8 @@ Map<String, Object?> castWebLyric(
         'durationMs': durationMs,
         'hasTrack': hasTrack,
       },
+      // 闲时引导语靠它决定显不显示：页面自己判断，多屏因此天然一致。
+      'idle': idle,
     };
 
 /// ARGB → CSS 颜色。CSS 的 8 位十六进制是 #RRGGBBAA，和 Flutter 的 AARRGGBB 字节序相反，
@@ -158,7 +161,8 @@ Map<String, Object?> castWebItem(CastMaterial m, CastPlacement p) => {
       'z': p.z,
       // 座位号已从歌词附加信息里移除：新投放层不再显示它（旧一屏一窗回退仍按原样式）。
       if (m.type == CastMaterialType.lyric) 'style': {...castWebStyle(m.style), 'showSeat': false},
-      if (m.type == CastMaterialType.text) ...{
+      if (m.type == CastMaterialType.text || m.type == CastMaterialType.idleText) ...{
+        // 闲时引导语和文字素材共用同一套排版字段，区别只在页面按 idle 决定显隐。
         'text': m.text,
         'size': m.fontSize,
         'weight': m.fontWeight,

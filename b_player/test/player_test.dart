@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -8,6 +9,7 @@ import 'package:b_player/edge/library.dart';
 import 'package:b_player/edge/player_engine.dart';
 import 'package:b_player/edge/protocol.dart';
 import 'package:b_player/l10n/l10n.dart';
+import 'package:b_player/log.dart';
 import 'package:b_player/state/app_state.dart';
 
 const _mqtt = MqttConfig(enabled: false);
@@ -354,5 +356,40 @@ void main() {
     h.engine.emitDuration(3000);
     await pumpEventQueue();
     expect(h.state.playbackError, isNull);
+  });
+
+  test('一次播放的关键环节都写进日志，能按 #gen 串起来', () async {
+    final dir = await Directory.systemTemp.createTemp('enode_play_log');
+    addTearDown(() async {
+      await EnodeLog.close();
+      await dir.delete(recursive: true);
+    });
+    await EnodeLog.init(dir: dir);
+
+    final h = _build();
+    addTearDown(h.state.dispose);
+
+    await _enqueue(h.state, 'fake:a');
+    await pumpEventQueue();
+    h.state.togglePlay();
+    h.state.skip();
+    // 歌词单独走一条链路（library.lyricFor → 上游），也必须有记录。
+    await h.state.edge.lyric();
+    await pumpEventQueue();
+    await EnodeLog.close();
+
+    final files = dir.listSync().whereType<File>().toList();
+    final text = await files.single.readAsString();
+
+    expect(text, contains('[queue] 接受《甲》'), reason: '入队要有记录');
+    expect(text, contains('[audio]'), reason: '取链过程要有记录');
+    expect(text, contains('取链成功'), reason: '取链结果要有记录');
+    expect(text, contains('[player] #'), reason: '播放阶段要带 gen 便于串联');
+    expect(text, contains('开始加载《甲》'), reason: '切歌开始要有记录');
+    expect(text, contains('开播《甲》'), reason: '开播要有记录');
+    expect(text, contains('暂停'), reason: '暂停操作要有记录');
+    expect(text, contains('手动下一首'), reason: '切歌操作要有记录');
+    expect(text, contains('[lyric]'), reason: '取词过程要有记录');
+    expect(text, contains('取词成功'), reason: '取词结果要有记录');
   });
 }

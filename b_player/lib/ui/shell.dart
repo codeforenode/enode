@@ -10,6 +10,7 @@ import '../state/app_state.dart';
 import '../state/app_update.dart';
 import '../theme.dart';
 import 'cards.dart';
+import 'form_bits.dart';
 import 'settings_dialog.dart';
 import 'sources_panel.dart';
 import 'update_bits.dart';
@@ -153,8 +154,7 @@ class _TopBar extends StatelessWidget {
         child: Row(children: [
           const _Brand(),
           const SizedBox(width: 14),
-          _Status(state: state),
-          const Spacer(),
+          Expanded(child: _Status(state: state)),
           const _VersionBadge(),
           const SizedBox(width: 2),
           _SettingsButton(onSettings: onSettings),
@@ -175,8 +175,7 @@ class _BrandBar extends StatelessWidget {
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.fromLTRB(12, 10, 6, 8),
         child: Row(children: [
-          const Spacer(),
-          _Status(state: state),
+          Expanded(child: _Status(state: state)),
           const SizedBox(width: 4),
           const _VersionBadge(),
           _SettingsButton(onSettings: onSettings),
@@ -210,7 +209,8 @@ class _Status extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final edge = state.edge;
-    return Row(mainAxisSize: MainAxisSize.min, children: [
+    final t = AppL10n.of(context);
+    return Row(children: [
       Dot(on: edge.connected),
       const SizedBox(width: 6),
       Text(
@@ -221,8 +221,23 @@ class _Status extends StatelessWidget {
         ),
       ),
       if (edge.nodeId.isNotEmpty) ...[
-        const SizedBox(width: 10),
-        Text(edge.nodeId, style: kNums.copyWith(fontSize: 11, color: C.faint)),
+        const SizedBox(width: 8),
+        // 完整 nodeId 有 19 个字符：宽屏照常显示，窄窗里自己省略而不是把整行撑破。
+        // 点一下复制，方便运维把它贴进 TARGET_NODE。
+        Flexible(
+          child: Tooltip(
+            message: '${edge.nodeId}\n${t.copy}',
+            child: InkWell(
+              onTap: () => unawaited(copyToClipboard(context, edge.nodeId, t.copyDone)),
+              child: Text(
+                edge.nodeId,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: kNums.copyWith(fontSize: 11, color: C.faint),
+              ),
+            ),
+          ),
+        ),
       ],
     ]);
   }

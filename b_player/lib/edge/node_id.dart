@@ -1,19 +1,18 @@
-import 'dart:convert';
-import 'dart:io';
 import 'dart:math';
 
-import 'package:crypto/crypto.dart';
-import 'package:device_info_plus/device_info_plus.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// 节点 ID：B端 自动生成，不需要也不允许使用者填写。
+/// 节点 ID：B端 首次启动时自己生成一个随机标识，写入本机后长期沿用。
 ///
-/// 由设备稳定标识派生并做 SHA-256 截断，因此：
-/// - 重装 App、升级版本、清空数据后重新计算，结果不变；
-/// - 恢复出厂设置 / 换机后才会变化；
-/// - 消息主题里只出现哈希值，不暴露原始硬件标识。
+/// 为什么不拿设备硬件标识派生：批量部署常从同一份系统镜像克隆，
+/// `MachineGuid` / Android ID 会完全一样，几十台节点算出来的 ID 全撞在一起——
+/// 主题互相覆盖，入队还会落到别的机器上。随机值与硬件无关，克隆多少台都不会重样。
 ///
-/// 取不到设备标识的环境（测试、部分桌面）退化为随机值，只能靠本地持久化保持稳定。
+/// 兼容老版本：已有落盘值一律沿用（格式没变，仍是 `nd-` + 16 位十六进制），
+/// 升级后节点 ID 保持不变，中继的 `TARGET_NODE` 与 retained 主题都还认得。
+///
+/// 代价：卸载并清空应用数据后会生成新的 ID，需要在接入方重新绑定。
 abstract final class NodeIdentity {
   static const _prefsKey = 'edge.node.id';
   static final _format = RegExp(r'^nd-[0-9a-f]{16}$');
@@ -23,6 +22,13 @@ abstract final class NodeIdentity {
 
   static String? get cached => _cached;
 
+  /// 仅测试用：清掉进程内缓存，模拟一次冷启动。
+  @visibleForTesting
+  static void resetCacheForTest() {
+    _cached = null;
+    _pending = null;
+  }
+
   static Future<String> ensure() {
     final hit = _cached;
     if (hit != null) return Future.value(hit);
@@ -30,41 +36,20 @@ abstract final class NodeIdentity {
   }
 
   static Future<String> _resolve() async {
+    // 老版本存过的 ID 一律沿用：升级不能换身份。
     final saved = await _read();
     if (saved != null) return _cached = saved;
-    final seed = await _deviceSeed();
-    final id = seed == null ? _randomId() : _derive(seed);
+    final id = _randomId();
     _cached = id;
     await _write(id);
     return id;
   }
 
-  static String _derive(String seed) =>
-      'nd-${sha256.convert(utf8.encode('enode-edge-node|$seed')).toString().substring(0, 16)}';
-
+  /// 8 字节随机（64 位）：几百台规模的碰撞概率可以忽略，且与硬件信息无关。
   static String _randomId() {
     final r = Random.secure();
     final hex = List.generate(8, (_) => r.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
     return 'nd-$hex';
-  }
-
-  static Future<String?> _deviceSeed() async {
-    try {
-      final info = DeviceInfoPlugin();
-      if (Platform.isAndroid) return _nonEmpty((await info.androidInfo).id);
-      if (Platform.isIOS) return _nonEmpty((await info.iosInfo).identifierForVendor);
-      if (Platform.isWindows) return _nonEmpty((await info.windowsInfo).deviceId);
-      if (Platform.isMacOS) return _nonEmpty((await info.macOsInfo).systemGUID);
-      if (Platform.isLinux) return _nonEmpty((await info.linuxInfo).machineId);
-    } catch (_) {
-      // 插件不可用：走随机兜底。
-    }
-    return null;
-  }
-
-  static String? _nonEmpty(String? v) {
-    final t = v?.trim();
-    return t == null || t.isEmpty ? null : t;
   }
 
   static Future<String?> _read() async {

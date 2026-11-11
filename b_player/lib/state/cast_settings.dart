@@ -407,7 +407,10 @@ class CastStyle {
 }
 
 /// 素材类型。歌词只是其中一种，其余素材负责背景、看板、片头与字幕。
-enum CastMaterialType { lyric, url, image, video, text }
+///
+/// [idleText] 是「闲时引导语」：配置方式和 [text] 完全一样，区别只在显示时机——
+/// 没有曲目在播、队列也空着（刚开机、点的歌播完了）时才出现，有歌就自动让位。
+enum CastMaterialType { lyric, url, image, video, text, idleText }
 
 /// 图片/影片的来源：本地文件或网络地址。
 enum CastMediaSource { local, url }
@@ -488,10 +491,13 @@ class CastMaterial {
 
   bool get isMedia => type == CastMaterialType.image || type == CastMaterialType.video;
 
+  /// 闲时引导语只在「没有曲目、队列也空」的时候出现，由投放页按这个标记隐藏。
+  bool get isIdleOnly => type == CastMaterialType.idleText;
+
   /// 素材是否已有可显示的内容（空素材仍然保留在架子上，方便先放位置再填）。
   bool get hasContent => switch (type) {
         CastMaterialType.lyric => true,
-        CastMaterialType.text => text.trim().isNotEmpty,
+        CastMaterialType.text || CastMaterialType.idleText => text.trim().isNotEmpty,
         CastMaterialType.url => url.trim().isNotEmpty,
         CastMaterialType.image || CastMaterialType.video =>
           source == CastMediaSource.local ? path.trim().isNotEmpty : url.trim().isNotEmpty,
@@ -549,7 +555,7 @@ class CastMaterial {
         if (type == CastMaterialType.lyric) 'st': style.toJson(),
         if (type == CastMaterialType.url) 'url': url,
         if (isMedia) 'src': source.name,
-        if (type == CastMaterialType.text) 'text': text,
+        if (type == CastMaterialType.text || type == CastMaterialType.idleText) 'text': text,
         if (type == CastMaterialType.url) ...{
           'refresh': refreshSec,
           'rev': rev,
@@ -564,7 +570,7 @@ class CastMaterial {
           'loop': loop,
           'auto': autoplay,
         },
-        if (type == CastMaterialType.text) ...{
+        if (type == CastMaterialType.text || type == CastMaterialType.idleText) ...{
           'size': fontSize,
           'weight': fontWeight,
           'color': color,

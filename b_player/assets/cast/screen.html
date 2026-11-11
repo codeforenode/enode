@@ -39,6 +39,8 @@
     screen: null,
     lines: [], title: '', artist: '', seat: '', durationMs: 0,
     hasTrack: false, noLyrics: '',
+    // 闲时引导语的开关。默认 false：宁可先不显示，也别让「扫码点歌」压在正在放的歌上。
+    idle: false,
     anchor: { positionMs: 0, wallMs: 0, playing: false }
   };
   var nodes = {};
@@ -184,7 +186,7 @@
     el.className = 'item ' + it.t;
     var node = { kind: it.t, el: el, item: it };
     if (it.t === 'lyric') node.lyric = buildLyric(el);
-    else if (it.t === 'text') node.text = buildText(el);
+    else if (it.t === 'text' || it.t === 'idleText') node.text = buildText(el);
     else if (it.t === 'image') node.image = buildImage(el);
     else if (it.t === 'video') node.video = buildVideo(el);
     else if (it.t === 'url') node.url = buildUrl(el);
@@ -210,7 +212,7 @@
     el.style.opacity = String(num(it.op, 1));
     el.style.zIndex = String(num(it.z, 1));
     // 文字素材需要 flex 才能在框内垂直居中；其余素材都是铺满的块。
-    el.style.display = node.kind === 'text' ? 'flex' : 'block';
+    el.style.display = (node.kind === 'text' || node.kind === 'idleText') ? 'flex' : 'block';
     var r = num(it.r, 0) * k();
     el.style.borderRadius = r > 0 ? r + 'px' : '0';
   }
@@ -502,10 +504,22 @@
   function renderNode(node) {
     layoutNode(node);
     if (node.kind === 'lyric') renderLyric(node);
-    else if (node.kind === 'text') renderText(node);
+    else if (node.kind === 'text' || node.kind === 'idleText') renderText(node);
     else if (node.kind === 'image') renderImage(node);
     else if (node.kind === 'video') renderVideo(node);
     else if (node.kind === 'url') renderUrl(node);
+    applyIdle();
+  }
+
+  // 闲时引导语：只在没有曲目、队列也空（cfg.idle）的时候出现。
+  // 布局仍然按框算，这里只切 display，避免它影响别的素材的排版。
+  function applyIdle() {
+    for (var id in nodes) {
+      if (!Object.prototype.hasOwnProperty.call(nodes, id)) continue;
+      var n = nodes[id];
+      if (n.kind !== 'idleText') continue;
+      n.el.style.display = cfg.idle ? 'flex' : 'none';
+    }
   }
 
   function renderAll() {
@@ -513,6 +527,7 @@
       var n = nodes[id];
       if (n.kind === 'lyric') renderLyric(n);
     }
+    applyIdle();
   }
 
   // ---------- 应用一屏的构图 ----------
@@ -580,6 +595,8 @@
         cfg.durationMs = num(next.nowPlaying.durationMs, 0);
         cfg.hasTrack = next.nowPlaying.hasTrack === true;
       }
+      // false 也要收下：有歌时必须把闲时引导语撤掉。
+      if (typeof next.idle === 'boolean') cfg.idle = next.idle;
       if (next.tick) {
         cfg.anchor = {
           positionMs: num(next.tick.positionMs, 0),

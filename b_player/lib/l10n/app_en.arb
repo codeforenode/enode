@@ -41,6 +41,8 @@
   "aboutLibraryDir": "Library folder",
   "aboutLogDir": "Debug logs",
   "aboutOpenLog": "Open log folder",
+  "copy": "Copy",
+  "copyDone": "Copied",
   "aboutOpenSource": "Open source",
   "aboutLicense": "License",
   "aboutViewLicenses": "View licenses & third-party notices",
@@ -571,6 +573,9 @@
   "screenTypeVideoDesc": "Local or network video, with sound",
   "screenTypeText": "Text",
   "screenTypeTextDesc": "Static text",
+  "screenTypeIdleText": "Idle hint",
+  "screenTypeIdleTextDesc": "Shown only when nothing is playing",
+  "screenIdleNote": "Shown only when nothing is playing and the queue is empty",
 
   "sourcesTitle": "Sources",
   "sourcesTotal": "{count} tracks in library",

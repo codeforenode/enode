@@ -321,6 +321,18 @@ abstract class AppL10n {
   /// **'開啟日誌資料夾'**
   String get aboutOpenLog;
 
+  /// No description provided for @copy.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'複製'**
+  String get copy;
+
+  /// No description provided for @copyDone.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'已複製'**
+  String get copyDone;
+
   /// No description provided for @aboutOpenSource.
   ///
   /// In zh_Hant, this message translates to:
@@ -3297,6 +3309,24 @@ abstract class AppL10n {
   /// In zh_Hant, this message translates to:
   /// **'靜態文字'**
   String get screenTypeTextDesc;
+
+  /// No description provided for @screenTypeIdleText.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'閒時引導語'**
+  String get screenTypeIdleText;
+
+  /// No description provided for @screenTypeIdleTextDesc.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'無曲目時自動顯示'**
+  String get screenTypeIdleTextDesc;
+
+  /// No description provided for @screenIdleNote.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'只在沒有曲目、隊列也空時顯示，一有歌就自動隱藏'**
+  String get screenIdleNote;
 
   /// No description provided for @sourcesTitle.
   ///

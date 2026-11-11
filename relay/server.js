@@ -86,8 +86,9 @@ function connectMqtt() {
         `${PREFIX}/+/health`,
         `${PREFIX}/+/queue`,
         `${PREFIX}/+/events`,
-        `${PREFIX}/+/rpc/search.resp/+`,
-        `${PREFIX}/+/rpc/enqueue.resp/+`,
+        // 用通配符一次覆盖所有 RPC 应答：逐个列举的话，新加一种 RPC（比如 featured）
+        // 很容易漏订阅，表现为节点明明回了、中继却一直等到超时。
+        `${PREFIX}/+/rpc/+/+`,
       ],
       { qos: 1 },
       (err) => {

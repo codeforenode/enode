@@ -148,7 +148,8 @@ class NowPlayingCard extends StatelessWidget {
               if (np != null) ...[
                 const SizedBox(height: 7),
                 _TagRow(tags: [
-                  np.seat == null ? t.addedHere : t.fromGuest(np.seatLabel),
+                  // 只有真的带了桌号才显示来源；缺失时整块不出现。
+                  if (np.seat != null) t.fromGuest(np.seat!),
                   ...state.sourceTags(np.trackKey),
                 ]),
               ],
@@ -544,15 +545,18 @@ class _QueueRow extends StatelessWidget {
                       style: TextStyle(fontSize: 11, color: C.faint)),
                 ),
                 const SizedBox(width: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: C.panel2,
-                    border: Border.all(color: C.line),
-                    borderRadius: BorderRadius.circular(99),
+                // 没带桌号的曲目（多为对接方漏传 seat）什么都不显示：
+                // 挂个「本机」标签等于把缺失当成一种身份，反而误导。
+                if (item.seat != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: C.panel2,
+                      border: Border.all(color: C.line),
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                    child: Text(item.seat!, style: TextStyle(fontSize: 10.5, color: C.dim)),
                   ),
-                  child: Text(item.seatLabel, style: TextStyle(fontSize: 10.5, color: C.dim)),
-                ),
               ]),
             ]),
           ),

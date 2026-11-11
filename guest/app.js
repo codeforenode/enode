@@ -227,8 +227,8 @@
 
   // ---------------- 出厂歌单 ----------------
 
-  // 首屏一次给 8 条：一屏能扫完，又不至于把「等待队列」挤出视线。
-  const FEATURED_PAGE = 8;
+  // 歌单只有 10 首，一次全展示；「换一批」在这条配置下会自动隐藏。
+  const FEATURED_PAGE = 10;
 
   function renderFeatured() {
     const card = $('featuredCard');
