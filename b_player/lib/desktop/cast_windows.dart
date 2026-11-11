@@ -6,6 +6,7 @@ import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/services.dart';
 
 import '../l10n/l10n.dart';
+import '../log.dart';
 import '../state/app_state.dart';
 import '../state/cast_settings.dart';
 import '../state/lrc.dart';
@@ -162,6 +163,14 @@ class CastWindows {
     // 设置换了对象才要重算开窗名单；只是进度/歌词变了就只推内容。
     final changed = !identical(_seenCast, _state.cast);
     if (changed) {
+      // 画布失败一次就永久退化会很难受：店家改一下设置（换屏、拖位置）应该能再试。
+      // 只在「用户确实改了配置」时重试，不会变成每 2 秒的循环。
+      // 但 dead 是进程级不可恢复（运行时已 shutdown，重初始化必崩），
+      // 这种情况下不再重试，本次运行固定一屏一窗。
+      if (_canvasBroken && !(_canvas?.dead ?? false)) {
+        _canvasBroken = false;
+        EnodeLog.i('cast', '投放设置已变更，重新尝试画布通道');
+      }
       unawaited(_sync());
     } else {
       unawaited(_push());
@@ -188,20 +197,35 @@ class CastWindows {
   Future<void> _applyOnce() async {
     final s = _state.cast;
     _seenCast = s;
-    final plan = castWindowPlan(s, _state.castMonitors);
+    // 快照一次用到底：await 中途拔插屏/重扫会换列表，布局与构图各读一版会闪一帧错位。
+    final monitors = _state.castMonitors;
+    final plan = castWindowPlan(s, monitors);
+    EnodeLog.d(
+      'cast',
+      '应用投放计划：屏数=${plan.length} 通道=${_canvas != null && !_canvasBroken ? '画布' : '一屏一窗'}',
+    );
     // 画布通道：一块纹理 + 每屏一个原生 presenter，不再建 Flutter 子引擎。
     final canvas = _canvas;
     if (canvas != null && !_canvasBroken) {
       if (plan.isEmpty) {
         await canvas.stop();
-      } else if (await canvas.ensure(s, _state.castMonitors)) {
-        await canvas.applyComposition(s, _state.castMonitors);
+      } else if (await canvas.ensure(s, monitors)) {
+        // 画布通了：把一屏一窗时代可能留下的子窗全部收掉。那些窗置顶、
+        // 鼠标穿透、不可手动关，留着就是叠在新画面上的幽灵窗。
+        if (_wins.isNotEmpty) {
+          EnodeLog.i('cast', '画布恢复，收掉遗留的一屏一窗子窗 ${_wins.length} 扇');
+          for (final id in _wins.keys.toList()) {
+            await _destroy(id);
+          }
+        }
+        await canvas.applyComposition(s, monitors);
         await _push(forceLyric: true);
         return;
       } else {
         _canvasBroken = true;
         final err = canvas.lastError;
         if (err != null) lastError = l10n.castCanvasFallback(err);
+        EnodeLog.w('cast', '画布通道起不来，退回一屏一窗：${err ?? '原因未知'}');
       }
     }
     // CEF 运行时是进程一份：在主引擎里起来，子引擎那边再调只是幂等返回，
@@ -250,15 +274,18 @@ class CastWindows {
       _modes[monitorId] = target.mode;
       await ack.future.timeout(const Duration(seconds: 12));
       lastError = null;
+      EnodeLog.i('cast', '投放窗就绪 ${monitor.name} mode=${target.mode.name}');
     } on TimeoutException {
       // 句柄留着：窗可能只是起得慢，摘了登记就再也收不掉它（退出时会剩一块黑屏）。
       _ready.remove(monitorId);
       lastError = l10n.castWindowTimeout(monitor.name);
-    } catch (e) {
+      EnodeLog.w('cast', '投放窗 12s 没回报就绪 ${monitor.name}');
+    } catch (e, st) {
       _wins.remove(monitorId);
       _modes.remove(monitorId);
       _ready.remove(monitorId);
       lastError = l10n.castWindowCreateFailed(monitor.name, '$e');
+      EnodeLog.e('cast', '建投放窗失败 ${monitor.name}', e, st);
     }
   }
 
@@ -273,24 +300,56 @@ class CastWindows {
     final a = call.arguments;
     if (call.method == 'castNote') {
       // 网页投放起不来时子引擎把原因带回来自绘退回：画面不会空，但设置页要说清楚是为什么。
-      if (a is Map) lastError = l10n.castWebFallback('${a['reason']}');
+      if (a is Map) {
+        lastError = l10n.castWebFallback('${a['reason']}');
+        final detail = a['detail'];
+        EnodeLog.w(
+          'cast',
+          '网页投放退回自绘 ${a['monitorId'] ?? ''}：${a['reason']}'
+          '${detail == null ? '' : ' / $detail'}',
+        );
+      }
       return null;
     }
     if (call.method != 'castReady') return null;
     final id = a is Map ? a['monitorId'] as String? : null;
-    if (id != null) _ready.remove(id)?.complete();
+    if (id != null) {
+      final ack = _ready.remove(id);
+      if (ack != null) {
+        ack.complete();
+        return null;
+      }
+      // 迟到的就绪：这扇窗在建窗超时后又被摘出了计划（或按失败收掉了），
+      // 主进程已经没有它的句柄，之后再也发不出 close。趁它自己找上门，
+      // 在应答里让它就地销毁——否则又是一扇收不到指令、用户也关不掉的置顶幽灵窗。
+      if (!_wins.containsKey(id)) {
+        EnodeLog.w('cast', '投放窗就绪来得太迟 $id，让它就地关闭');
+        return {'stale': true};
+      }
+    }
     return null;
   }
 
+  /// 正在销毁的窗：`_push` 不受 `_sync` 串行保护，销毁进行中它可能还持有旧的
+  /// live 名单，invoke 失败会被当成「窗掉了」误报到设置页。
+  final _destroying = <String>{};
+
   Future<void> _destroy(String monitorId) async {
-    final controller = _wins.remove(monitorId);
-    _modes.remove(monitorId);
-    _ready.remove(monitorId)?.complete();
-    if (controller == null) return;
+    _destroying.add(monitorId);
     try {
-      await controller.invokeMethod('close');
-    } catch (_) {
-      // 窗已经被用户关了（Alt+F4）或插件通道已断，收尾本来就该是幂等的。
+      final controller = _wins.remove(monitorId);
+      _modes.remove(monitorId);
+      _ready.remove(monitorId)?.complete();
+      if (controller == null) return;
+      EnodeLog.d('cast', '收投放窗 $monitorId');
+      try {
+        await controller.invokeMethod('close');
+      } catch (e) {
+        // 窗已经被用户关了（Alt+F4）或插件通道已断，收尾本来就该是幂等的。
+        EnodeLog.d('cast', '收投放窗 $monitorId 时通道已断：$e');
+      }
+    } finally {
+      _destroying.remove(monitorId);
     }
   }
 
@@ -357,10 +416,11 @@ class CastWindows {
 
   Future<void> _send(String monitorId, String method, Object? args) async {
     final controller = _wins[monitorId];
-    if (controller == null) return;
+    if (controller == null || _destroying.contains(monitorId)) return;
     try {
       await controller.invokeMethod(method, args);
     } catch (e) {
+      if (_destroying.contains(monitorId)) return; // 是我们自己收的，不是掉了
       // 子窗没了（Alt+F4 / 引擎被回收）：摘掉登记，等用户下次改设置再重建，别在这里反复开窗。
       _wins.remove(monitorId);
       _modes.remove(monitorId);
@@ -378,10 +438,17 @@ class CastWindows {
 
   /// 收起所有投放窗（托盘退出 / 关进程前调用）。
   Future<void> closeAll() async {
-    await _canvas?.stop();
+    EnodeLog.i('cast', '停止投放：画布=${_canvas?.active == true} 子窗=${_wins.length}');
+    try {
+      await _canvas?.stop();
+    } catch (e, st) {
+      // CEF 收尾偶尔会抛（presenter 已经没了）。不能让它挡住后面的收窗。
+      EnodeLog.e('cast', '停止画布失败', e, st);
+    }
     for (final id in _wins.keys.toList()) {
       await _destroy(id);
     }
+    EnodeLog.i('cast', '投放已全部停止');
   }
 
   void dispose() {

@@ -7,6 +7,7 @@ import 'package:flutter_chromium_webview/flutter_chromium_webview.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../l10n/l10n.dart';
+import '../log.dart';
 import '../state/cast_settings.dart';
 import '../state/lrc.dart';
 
@@ -17,21 +18,57 @@ import '../state/lrc.dart';
 
 /// CEF 运行时是整个进程一份：先由主 isolate 把它起来，投放窗那边再调只会幂等返回。
 /// 失败不重试也不抛：调用方退回 Flutter 自绘，画面不能因此空着。
-Future<bool> castWebInitialize() {
-  if (!Platform.isWindows) return Future.value(false);
-  return _cefInit ??= () async {
-    try {
-      final support = await getApplicationSupportDirectory();
-      final cache = Directory('${support.path}${Platform.pathSeparator}cef');
-      if (!cache.existsSync()) cache.createSync(recursive: true);
-      return await ChromiumWebViewController.initialize(cachePath: cache.absolute.path);
-    } catch (_) {
-      return false;
+///
+/// 但**失败原因必须留下**：这个错一旦吞掉，现场只看到「网页投放退回自绘」，
+/// 既分不清是缺 DLL、缺 locales，还是 cache 目录不可写，等于没线索。
+///
+/// [cacheTag] 决定用哪个 profile 目录。CEF 的 cache 目录是**独占**的：
+/// 主进程已经用 `cef` 建了画布，投放子窗（独立进程）再用同一个目录必然起不来，
+/// 于是退回自绘并报「Chromium 运行环境起不来」——这正是之前那条误导性提示的来源。
+/// 子窗传自己的 tag，两个进程各有各的 profile，互不抢锁。
+Future<bool> castWebInitialize({String cacheTag = 'cef'}) =>
+    _cefInits[cacheTag] ??= _initCef(cacheTag);
+
+final Map<String, Future<bool>> _cefInits = {};
+
+/// 本进程是否已经初始化过 CEF。
+///
+/// **一个进程只能初始化一次**：实测第二次 `initialize()` 会直接
+/// `INIT_FAILED: use the sandbox bootstrap runner`，紧接着进程崩（0xc0000005）。
+/// 所以这里绝不做「关掉再初始化」的重试——那正是 12:50 那次崩溃的来源。
+bool castWebReady({String cacheTag = 'cef'}) => _cefInits.containsKey(cacheTag);
+
+/// 最近一次初始化失败的原因，给子窗回传用（子进程不写日志）。
+String? castWebLastError;
+
+Future<bool> _initCef(String cacheTag) async {
+  if (!Platform.isWindows) return false;
+  final support = await getApplicationSupportDirectory();
+  final cache = Directory('${support.path}${Platform.pathSeparator}$cacheTag');
+  final exeDir = File(Platform.resolvedExecutable).parent.path;
+  final missing = [
+    for (final name in const ['libcef.dll', 'chrome_elf.dll', 'icudtl.dat', 'resources.pak'])
+      if (!File('$exeDir${Platform.pathSeparator}$name').existsSync()) name,
+  ];
+  try {
+    if (!cache.existsSync()) cache.createSync(recursive: true);
+    final ok = await ChromiumWebViewController.initialize(cachePath: cache.absolute.path);
+    if (ok) {
+      EnodeLog.i('cast', 'CEF 初始化成功 cache=$cacheTag');
+    } else {
+      castWebLastError = 'initialize 返回 false（缺文件=${missing.isEmpty ? '无' : missing.join(',')}）';
+      EnodeLog.w('cast', 'CEF 初始化失败 cache=$cacheTag exe=$exeDir '
+          '缺文件=${missing.isEmpty ? '无' : missing.join(',')}');
     }
-  }();
+    return ok;
+  } catch (e, st) {
+    castWebLastError = '$e';
+    EnodeLog.e('cast', 'CEF 初始化异常 cache=$cacheTag exe=$exeDir '
+        '缺文件=${missing.isEmpty ? '无' : missing.join(',')}', e, st);
+    return false;
+  }
 }
 
-Future<bool>? _cefInit;
 
 /// 投放页面在打包产物里的相对位置（旧的一屏一窗回退仍用它）。
 const castAssetPagePath = 'data/flutter_assets/assets/cast/lyric.html';

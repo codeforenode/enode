@@ -208,13 +208,20 @@ class LxScriptRuntime {
     if (_disposed) return;
     _disposed = true;
     _initialized = false;
-    try {
-      _rt?.dispose();
-    } catch (_) {
-      // 引擎已析构时忽略。
-    }
-    _rt = null;
-    if (_ownsClient) _client.close();
+    // 引擎销毁排到任务链尾：进行中的调用还在用 `_rt` 轮询微任务，
+    // 立刻销毁会让 flutter_js 在已释放的运行时上继续 evaluate——
+    // 行为未定义，可能直接原生崩溃（无 WER 线索的那种）。排队后
+    // 先跑完手头的活，再收引擎。
+    _tail = _tail.then((_) {
+      final rt = _rt;
+      _rt = null;
+      try {
+        rt?.dispose();
+      } catch (_) {
+        // 引擎已析构时忽略。
+      }
+      if (_ownsClient) _client.close();
+    });
   }
 
   // ---------------- 内部 ----------------
@@ -252,6 +259,8 @@ class LxScriptRuntime {
     if (rt == null) throw LxScriptException(l10n.runtimeDisposed);
     final deadline = DateTime.now().add(timeout);
     while (true) {
+      // dispose 已排队/已换引擎：别再碰这份 rt。
+      if (_rt != rt) throw LxScriptException(l10n.runtimeDisposed);
       // 每次 evaluate 不会自动跑微任务，必须显式驱动 Promise 队列。
       rt.executePendingJob();
       if (done()) return;

@@ -89,6 +89,9 @@ class EdgeNode extends ChangeNotifier {
   final Map<String, List<int>> _guestHits = {};
   final Map<String, Future<Map<String, Object?>>> _enqueueInflight = {};
 
+  /// tag 名单总量上限：tag 来自外部报文，恶意客户端换 tag 灌报文可以把表吃大。
+  static const _maxGuestTags = 512;
+
   bool get connected => status == EdgeStatus.connected;
 
   String get statusLabel {
@@ -120,10 +123,17 @@ class EdgeNode extends ChangeNotifier {
   /// 运行时替换连接参数：先断开旧连接，再按新参数重连。
   Future<void> applyConfig(MqttConfig next) async {
     if (_disposed) return;
+    // 换配置前先按**旧**前缀把 retained 离线补到旧主题上：先改 config 再发的话，
+    // offline 会落到新前缀（甚至没人订阅的主题），旧主题上最后一条「在线」没人
+    // 覆盖，C 端最长要等中继 health 超时才下线，期间一直是幽灵在线。
+    final oldHealthTopic = healthTopic(config.topicPrefix, nodeId);
+    final prefixChanged = next.topicPrefix != config.topicPrefix;
+    if (connected && (!next.enabled || !next.configured || prefixChanged)) {
+      await publishOffline(topic: oldHealthTopic);
+    }
     config = next;
     _retryDelaySec = 3;
     if (!config.enabled || !config.configured) {
-      await publishOffline();
       await _closeClient();
       status = EdgeStatus.disabled;
       lastError = null;
@@ -133,7 +143,21 @@ class EdgeNode extends ChangeNotifier {
     await connect();
   }
 
+  /// 正在连接中就不重入：applyConfig 与重试定时器并发调用 connect 时，
+  /// 两个 connect 各自 _closeClient 会把对方刚建的连接拆掉，多绕一轮重连。
+  bool _connecting = false;
+
   Future<void> connect() async {
+    if (_connecting) return;
+    _connecting = true;
+    try {
+      await _connect();
+    } finally {
+      _connecting = false;
+    }
+  }
+
+  Future<void> _connect() async {
     _nodeId ??= await NodeIdentity.ensure();
     await _closeClient();
     if (!config.configured) {
@@ -293,7 +317,8 @@ class EdgeNode extends ChangeNotifier {
   ///
   /// 遗嘱只在异常断链时由 broker 发布；正常 DISCONNECT 不会发，
   /// 中继只能等 health 过期（35s）才判定离线，C端会一直显示“已连接”。
-  Future<void> publishOffline({Duration settle = const Duration(milliseconds: 250)}) async {
+  Future<void> publishOffline(
+      {Duration settle = const Duration(milliseconds: 500), String? topic}) async {
     if (!connected) return;
     final message = jsonEncode({
       'v': protocolVersion,
@@ -301,7 +326,7 @@ class EdgeNode extends ChangeNotifier {
       'node': nodeId,
       'ts': _now(),
     });
-    _publish(healthTopicName, message, retain: true);
+    _publish(topic ?? healthTopicName, message, retain: true);
     // QoS1 发布是异步的，给 broker 留出收发时间，再把连接断掉。
     await Future<void>.delayed(settle);
   }
@@ -325,7 +350,9 @@ class EdgeNode extends ChangeNotifier {
         'enqueueServed': enqueueServed,
       },
       'caps': extra['caps'] is List ? List<String>.from(extra['caps'] as List) : capsV1,
-      'app': const {'name': 'b-player', 'version': '0.1.0'},
+      // 真实版本号：接入方从 health 就能认出节点版本；写死的 '0.1.0' 让排障只能靠猜。
+      // 日志系统未就绪的极早期（init 之前）是 'dev'，不影响判别。
+      'app': {'name': 'b-player', 'version': EnodeLog.version},
     };
     _publish(healthTopicName, jsonEncode(message), retain: true);
   }
@@ -505,7 +532,9 @@ class EdgeNode extends ChangeNotifier {
       _respond(topic, _errorEnvelope(tSearchResp, nonce, errBadRequest, e.message));
     } on TimeoutException {
       _respond(topic, _errorEnvelope(tSearchResp, nonce, errInternal, l10n.searchTimeout));
-    } catch (_) {
+    } catch (e, st) {
+      // INTERNAL 不能只应答不记日志：中继收到 INTERNAL 时，现场没有任何线索可查。
+      EnodeLog.e('mqtt', '检索处理异常 nonce=$nonce', e, st);
       _respond(topic, _errorEnvelope(tSearchResp, nonce, errInternal, null));
     }
     notifyListeners();
@@ -527,7 +556,8 @@ class EdgeNode extends ChangeNotifier {
         nonce: nonce,
         payload: {'ok': true, ...body},
       ));
-    } catch (_) {
+    } catch (e, st) {
+      EnodeLog.e('mqtt', '出厂歌单处理异常 nonce=$nonce', e, st);
       _respond(topic, _errorEnvelope(tFeaturedResp, nonce, errInternal, null));
     }
   }
@@ -562,15 +592,11 @@ class EdgeNode extends ChangeNotifier {
       return;
     }
 
-    if (req.ts != 0 && now - req.ts > _staleRequestMs) {
-      EnodeLog.w('queue', '拒绝入队请求：已过期 ${(now - req.ts) ~/ 1000}s requestId=${req.requestId}');
-      _respond(topic, _errorEnvelope(tEnqueueResp, nonce, errStale, null));
-      return;
-    }
-
+    // 幂等缓存命中优先于新鲜度检查：重试报文带着**原始** ts，中继在网络抖动后
+    // 30s~10min 才重发属正常——先判 STALE 的话，10 分钟的幂等窗口实际只剩 30s，
+    // 同一首歌的第二次请求会被拒，顾客看到「点了没反应」。
     final cached = _responses[req.requestId];
     if (cached != null && now - cached.atMs < _requestCacheTtlMs) {
-      // 幂等重试：上一次已经在处理或已处理完，直接回同一份结果。
       EnodeLog.d('queue', '重复 requestId=${req.requestId}，返回 ${(now - cached.atMs) ~/ 1000}s 前的结果');
       _respond(topic, EdgeEnvelope(
         type: tEnqueueResp,
@@ -582,7 +608,16 @@ class EdgeNode extends ChangeNotifier {
       return;
     }
 
-    if (req.tag != null && !_allowEnqueue(req.tag!, now)) {
+    if (req.ts != 0 && now - req.ts > _staleRequestMs) {
+      EnodeLog.w('queue', '拒绝入队请求：已过期 ${(now - req.ts) ~/ 1000}s requestId=${req.requestId}');
+      _respond(topic, _errorEnvelope(tEnqueueResp, nonce, errStale, null));
+      return;
+    }
+
+    // 同一 requestId 还在处理中（上一次尚未应答）：并入这一轮，不再扣限流配额。
+    // 否则中继每重试一次就多扣一次，正常点歌节奏很快被打成 RATE_LIMITED。
+    final alreadyInflight = _enqueueInflight.containsKey(req.requestId);
+    if (!alreadyInflight && req.tag != null && !_allowEnqueue(req.tag!, now)) {
       // 顾客「点了没反应」最常见的原因之一：C端 只看到「请求太频繁」，
       // 现场没人知道是哪个客户端刷过头了。
       EnodeLog.w(
@@ -605,8 +640,9 @@ class EdgeNode extends ChangeNotifier {
         payload: payload,
       ));
       notifyListeners();
-    }, onError: (Object _) {
+    }, onError: (Object e) {
       // 回调里抛异常也必须应答，否则中继只能等到超时。
+      EnodeLog.e('queue', '入队处理异常 requestId=${req.requestId}', e);
       _respond(topic, _errorEnvelope(tEnqueueResp, nonce, errInternal, null));
       notifyListeners();
     }));
@@ -635,10 +671,16 @@ class EdgeNode extends ChangeNotifier {
   }
 
   bool _allowEnqueue(String tag, int now) {
-    final hits = _guestHits.putIfAbsent(tag, () => []);
+    final hits = _guestHits.putIfAbsent(tag, () => <int>[]);
     hits.removeWhere((t) => now - t > 60000);
+    if (hits.isEmpty) _guestHits.remove(tag);
+    // tag 名单总量有上限：tag 是外部输入，恶意/异常客户端换 tag 灌报文可以把表吃大。
+    while (_guestHits.length > _maxGuestTags) {
+      _guestHits.remove(_guestHits.keys.first);
+    }
     if (hits.length >= _enqueuePerMinute) return false;
     hits.add(now);
+    _guestHits[tag] = hits;
     return true;
   }
 

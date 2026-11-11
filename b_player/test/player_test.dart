@@ -378,7 +378,7 @@ void main() {
     await pumpEventQueue();
     await EnodeLog.close();
 
-    final files = dir.listSync().whereType<File>().toList();
+    final files = dir.listSync().whereType<File>().where((f) => f.path.endsWith('.log')).toList();
     final text = await files.single.readAsString();
 
     expect(text, contains('[queue] 接受《甲》'), reason: '入队要有记录');
