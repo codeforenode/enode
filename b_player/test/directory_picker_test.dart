@@ -72,4 +72,96 @@ void main() {
     await tester.pumpAndSettle();
     expect(picked, p.normalize(tmp.path));
   });
+
+  testWidgets('目录选择器：盘符入口可以直接切到另一个盘', (tester) async {
+    final tmp = Directory.systemTemp.createTempSync('dirpicker');
+    addTearDown(() => tmp.deleteSync(recursive: true));
+
+    String? picked;
+    Future<List<String>> lister(String dir) async {
+      if (dir == r'D:\') return [p.join(r'D:\', 'Music')];
+      return const [];
+    }
+
+    await tester.pumpWidget(localizedApp(
+      home: Scaffold(
+        body: Builder(
+          builder: (context) => TextButton(
+            onPressed: () async {
+              picked = await showDialog<String>(
+                context: context,
+                builder: (_) => DirectoryPickerDialog(
+                  initialPath: tmp.path,
+                  listDirs: lister,
+                  listDrives: () => [r'C:\', r'D:\'],
+                ),
+              );
+            },
+            child: const Text('open'),
+          ),
+        ),
+      ),
+    ));
+
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('dir-picker-drives')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('dir-picker-drive-D')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Music'), findsOneWidget);
+    expect(find.text(r'D:\'), findsOneWidget);
+
+    await tester.tap(find.text(l10n.chooseThisFolder));
+    await tester.pumpAndSettle();
+    expect(picked, p.normalize(r'D:\'));
+  });
+
+  testWidgets('目录选择器：根目录再往上是「此电脑」盘符列表', (tester) async {
+    final tmp = Directory.systemTemp.createTempSync('dirpicker');
+    addTearDown(() => tmp.deleteSync(recursive: true));
+
+    await tester.pumpWidget(localizedApp(
+      home: Scaffold(
+        body: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => showDialog<String>(
+              context: context,
+              builder: (_) => DirectoryPickerDialog(
+                initialPath: tmp.path,
+                listDirs: (_) async => const [],
+                listDrives: () => [r'C:\', r'D:\'],
+              ),
+            ),
+            child: const Text('open'),
+          ),
+        ),
+      ),
+    ));
+
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    // 一级一级往上走，直到没有上级（桌面根目录），最后一次点击落到盘符列表。
+    for (var i = 0; i < 12; i++) {
+      final up = find.byKey(const Key('dir-picker-up'));
+      if (tester.widget<IconButton>(up).onPressed == null) break;
+      await tester.tap(up);
+      await tester.pumpAndSettle();
+    }
+
+    expect(find.byKey(const Key('dir-picker-drive-list')), findsOneWidget);
+    expect(find.text(l10n.thisPc), findsOneWidget);
+    expect(find.text(l10n.chooseDriveHint), findsOneWidget);
+    // 「此电脑」不是一个真实目录，不能直接当曲库选中。
+    final choose = tester.widget<FilledButton>(find.byType(FilledButton));
+    expect(choose.onPressed, isNull);
+
+    await tester.tap(find.text(r'D:\').last);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('dir-picker-drive-list')), findsNothing);
+    expect(find.text(r'D:\'), findsOneWidget);
+  });
 }

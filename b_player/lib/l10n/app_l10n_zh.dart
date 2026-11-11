@@ -354,6 +354,15 @@ class AppL10nZh extends AppL10n {
   String get noSubfolders => '這裡沒有子資料夾，可直接選擇目前資料夾';
 
   @override
+  String get thisPc => '此電腦';
+
+  @override
+  String get switchDrive => '切換磁碟機';
+
+  @override
+  String get chooseDriveHint => '選一個磁碟機進入它的根目錄，再繼續挑資料夾。';
+
+  @override
   String get imageDirUnreadable => '讀不到這個資料夾';
 
   @override
@@ -2347,6 +2356,15 @@ class AppL10nZhHans extends AppL10nZh {
   String get noSubfolders => '这里没有子文件夹，可直接选择当前文件夹';
 
   @override
+  String get thisPc => '此电脑';
+
+  @override
+  String get switchDrive => '切换盘符';
+
+  @override
+  String get chooseDriveHint => '选一个盘符进入它的根目录，然后继续挑文件夹。';
+
+  @override
   String get imageDirUnreadable => '读不到这个文件夹';
 
   @override
@@ -4337,6 +4355,15 @@ class AppL10nZhHant extends AppL10nZh {
 
   @override
   String get noSubfolders => '這裡沒有子資料夾，可直接選擇目前資料夾';
+
+  @override
+  String get thisPc => '此電腦';
+
+  @override
+  String get switchDrive => '切換磁碟機';
+
+  @override
+  String get chooseDriveHint => '選一個磁碟機進入它的根目錄，再繼續挑資料夾。';
 
   @override
   String get imageDirUnreadable => '讀不到這個資料夾';

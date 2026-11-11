@@ -723,6 +723,24 @@ abstract class AppL10n {
   /// **'這裡沒有子資料夾，可直接選擇目前資料夾'**
   String get noSubfolders;
 
+  /// No description provided for @thisPc.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'此電腦'**
+  String get thisPc;
+
+  /// No description provided for @switchDrive.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'切換磁碟機'**
+  String get switchDrive;
+
+  /// No description provided for @chooseDriveHint.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'選一個磁碟機進入它的根目錄，再繼續挑資料夾。'**
+  String get chooseDriveHint;
+
   /// No description provided for @imageDirUnreadable.
   ///
   /// In zh_Hant, this message translates to:
