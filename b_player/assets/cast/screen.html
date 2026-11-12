@@ -4,6 +4,19 @@
 <meta charset="utf-8">
 <title>eNode 屏幕</title>
 <style>
+  /* 界面字体：随包分发的阿里巴巴普惠体 3.0 官方原版 OTF。
+     与 Flutter 主界面共用 assets/fonts 下的同一份文件，不重复打包；
+     文件按官方压缩包原样分发，未裁剪/转换（许可见 assets/legal/）。 */
+  @font-face {
+    font-family: 'AlibabaPuHuiTi';
+    src: url('../fonts/AlibabaPuHuiTi-3-55-Regular.otf') format('opentype');
+    font-weight: 400; font-style: normal; font-display: block;
+  }
+  @font-face {
+    font-family: 'AlibabaPuHuiTi';
+    src: url('../fonts/AlibabaPuHuiTi-3-85-Bold.otf') format('opentype');
+    font-weight: 700; font-style: normal; font-display: block;
+  }
   /* 底色由 screen.bg 写到 #screen 上；这里留透明，才让投放窗能透出桌面。 */
   html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: transparent; }
   body { -webkit-user-select: none; cursor: default; }
@@ -25,7 +38,7 @@
   .wf { width: 100%; height: 100%; border: 0; display: block; background: #0b0e10; }
   .ph { width: 100%; height: 100%; box-sizing: border-box; border: 1px dashed rgba(255,255,255,.18);
         display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,.35);
-        font: 500 14px/1.4 "Microsoft YaHei", sans-serif; text-align: center; padding: 8px; }
+        font: 500 14px/1.4 AlibabaPuHuiTi, "Microsoft YaHei", sans-serif; text-align: center; padding: 8px; }
 </style>
 </head>
 <body>
@@ -101,7 +114,7 @@
 
   function styleFont(el, size, weight, family, colorValue, style) {
     var kk = k();
-    el.style.fontFamily = str(family) || 'sans-serif';
+    el.style.fontFamily = str(family) || "AlibabaPuHuiTi, 'Microsoft YaHei', sans-serif";
     el.style.fontSize = size + 'px';
     el.style.fontWeight = String(weight || 600);
     el.style.color = colorValue;
@@ -431,7 +444,7 @@
     tx.style.textAlign = it.align || 'center';
     tx.style.whiteSpace = 'pre-wrap';
     tx.style.lineHeight = '1.25';
-    tx.style.fontFamily = str(it.font) || 'Microsoft YaHei';
+    tx.style.fontFamily = str(it.font) || "AlibabaPuHuiTi, 'Microsoft YaHei', sans-serif";
     tx.style.fontWeight = String(num(it.weight, 600));
     tx.style.color = str(it.color) || '#E8EDF1';
     tx.style.textShadow = it.shadow ? '0 ' + (3 * k()) + 'px ' + (10 * k()) + 'px rgba(0,0,0,.7)' : 'none';

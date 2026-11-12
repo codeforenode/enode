@@ -125,6 +125,10 @@ ButtonStyle get _cursorButtonStyle => ButtonStyle(mouseCursor: _clickCursor);
 ThemeData buildTheme(Brightness brightness) => ThemeData(
       useMaterial3: true,
       brightness: brightness,
+      // 界面统一用随包分发的阿里巴巴普惠体 3.0（见 pubspec.yaml 的 fonts 段）。
+      // 简体字库不含完整 Big5/HKSCS 用字，繁体/生僻字交给系统字体回退。
+      fontFamily: 'AlibabaPuHuiTi',
+      fontFamilyFallback: const ['Microsoft YaHei', 'Segoe UI', 'sans-serif'],
       scaffoldBackgroundColor: C.bg,
       colorScheme: ColorScheme(
         brightness: brightness,

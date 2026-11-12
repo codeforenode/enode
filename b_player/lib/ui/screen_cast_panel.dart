@@ -2112,7 +2112,7 @@ class _ScreenCastPanelState extends State<ScreenCastPanel> {
         _row(
           t.castFont,
           DropdownButton<String>(
-            value: castFontChoices(t).containsKey(style.fontFamily) ? style.fontFamily : 'Microsoft YaHei',
+            value: castFontChoices(t).containsKey(style.fontFamily) ? style.fontFamily : 'AlibabaPuHuiTi',
             isExpanded: true,
             isDense: true,
             dropdownColor: C.panel,
@@ -2341,7 +2341,7 @@ class _ScreenCastPanelState extends State<ScreenCastPanel> {
           _row(
             t.castFont,
             DropdownButton<String>(
-              value: castFontChoices(t).containsKey(m.fontFamily) ? m.fontFamily : 'Microsoft YaHei',
+              value: castFontChoices(t).containsKey(m.fontFamily) ? m.fontFamily : 'AlibabaPuHuiTi',
               isExpanded: true,
               isDense: true,
               dropdownColor: C.panel,
