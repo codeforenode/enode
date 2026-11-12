@@ -222,7 +222,7 @@ class CastTarget {
 class CastStyle {
   const CastStyle({
     this.lines = 2,
-    this.fontFamily = 'Microsoft YaHei',
+    this.fontFamily = 'AlibabaPuHuiTi',
     this.fontSize = 88,
     this.lineGap = 0,
     this.textWidth = 100,
@@ -381,7 +381,7 @@ class CastStyle {
 
   static CastStyle fromJson(Map raw) => CastStyle(
         lines: ((raw['lines'] as num?)?.toInt() ?? 2).clamp(1, 4),
-        fontFamily: '${raw['font'] ?? 'Microsoft YaHei'}',
+        fontFamily: '${raw['font'] ?? 'AlibabaPuHuiTi'}',
         fontSize: ((raw['size'] as num?)?.toDouble() ?? 88).clamp(12.0, 400.0),
         lineGap: ((raw['gap'] as num?)?.toDouble() ?? 0).clamp(0.0, 160.0),
         textWidth: ((raw['tw'] as num?)?.toDouble() ?? 100).clamp(40.0, 200.0),
@@ -447,7 +447,7 @@ class CastMaterial {
     this.color = 0xFFE8EDF1,
     this.align = CastAlign.center,
     this.shadow = true,
-    this.fontFamily = 'Microsoft YaHei',
+    this.fontFamily = 'AlibabaPuHuiTi',
     this.source = CastMediaSource.local,
     this.path = '',
     this.url = '',
@@ -602,7 +602,7 @@ class CastMaterial {
       color: (raw['color'] as num?)?.toInt() ?? 0xFFE8EDF1,
       align: _enumByName(CastAlign.values, raw['align'], CastAlign.center),
       shadow: raw['shadow'] != false,
-      fontFamily: '${raw['font'] ?? 'Microsoft YaHei'}',
+      fontFamily: '${raw['font'] ?? 'AlibabaPuHuiTi'}',
       source: _enumByName(CastMediaSource.values, raw['src'], CastMediaSource.local),
       path: '${raw['path'] ?? ''}',
       url: '${raw['url'] ?? ''}',

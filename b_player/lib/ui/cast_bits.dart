@@ -18,9 +18,11 @@ String castHex(int argb) {
 
 Color castColor(int argb) => Color(argb);
 
-/// 字体下拉在 HTML 原型里是浏览器字体；Flutter 只能用系统里真实存在的族名，
-/// 这几个是 Windows 自带、KTV 机器上一定有的。
+/// 字体下拉：前六个是 Windows 自带、KTV 机器上一定有的系统字体；
+/// AlibabaPuHuiTi 是随包分发的普惠体 3.0（pubspec fonts + 投放页 @font-face），
+/// 不依赖客户机器是否安装，Flutter 自绘回退与 CEF 网页用的是同一份字体文件。
 Map<String, String> castFontChoices(AppL10n txt) => {
+      'AlibabaPuHuiTi': 'Alibaba PuHuiTi 3.0',
       'Microsoft YaHei': txt.castFontYaHei,
       'SimHei': txt.castFontHei,
       'SimSun': txt.castFontSong,

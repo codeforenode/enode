@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.4.9+12
+version: 1.4.10+13
 
 environment:
   sdk: ^3.12.2
@@ -100,6 +100,17 @@ flutter:
     - assets/legal/
     # 出厂默认歌单：只有歌名/歌手/时长，不含音频与音源脚本
     - assets/featured/
+    # 界面字体：阿里巴巴普惠体 3.0 官方原版 OTF，与投放网页共用同一份文件
+    # （许可全文与下载记录见 assets/legal/）
+    - assets/fonts/
+
+  fonts:
+    - family: AlibabaPuHuiTi
+      fonts:
+        - asset: assets/fonts/AlibabaPuHuiTi-3-55-Regular.otf
+          weight: 400
+        - asset: assets/fonts/AlibabaPuHuiTi-3-85-Bold.otf
+          weight: 700
 
   # To add assets to your application, add an assets section, like this:
   # assets:
