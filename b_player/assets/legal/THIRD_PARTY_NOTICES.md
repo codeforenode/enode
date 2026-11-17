@@ -7,7 +7,7 @@ eNode 以 AGPL-3.0 发布（见 [`LICENSE`](LICENSE)）。下面是随源码仓�
 
 | 组件 | 版本 | 许可 | 来源 / 说明 |
 |---|---|---|---|
-| Chromium Embedded Framework (CEF) | 149.0.4 | BSD-3-Clause | <https://github.com/chromiumembedded/cef>。由 `flutter_chromium_webview` 下载，许可全文见发布目录的 `LICENSE.txt`。 |
+| Chromium Embedded Framework (CEF) | Chromium 149.0.7827.156（自定义构建，启用 H.264/AAC） | BSD-3-Clause | <https://github.com/chromiumembedded/cef>，commit `2f1bfd8`。由 `flutter_chromium_webview` 取固定分发包，构建参数含 `proprietary_codecs=true`、`ffmpeg_branding=Chrome`；许可全文见发布目录的 `LICENSE.txt`。编解码器专利许可不在 BSD 许可范围内。 |
 | libmpv | 0.36.0-403-g652a1dd907 | LGPL-2.1-or-later | 由 `media_kit_libs_windows_audio` 带入的预编译 `libmpv-2.dll`，构建参数含 `-Dgpl=false`。源码：<https://github.com/mpv-player/mpv>，构建：<https://github.com/media-kit/libmpv-win32-audio-build>。 |
 | FFmpeg | 随上述 libmpv 构建 | LGPL-2.1-or-later | 随 libmpv 构建链接；该构建关闭了 GPL 组件。 |
 | Flutter engine / Dart runtime | 3.44.x | BSD-3-Clause | <https://github.com/flutter/flutter>。 |
