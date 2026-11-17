@@ -19,6 +19,18 @@ $repoRoot = (Resolve-Path (Join-Path (Get-Location) '..')).Path
 $dist = Join-Path (Get-Location) 'dist'
 New-Item -ItemType Directory -Force $dist | Out-Null
 
+# CI builds must use the codec-enabled libcef.dll, not silently fall back to stock.
+if ($env:ENODE_CEF_EXPECT_LIBCEF_SHA256) {
+    $cefDll = Join-Path $rel 'libcef.dll'
+    if (-not (Test-Path -LiteralPath $cefDll)) { throw "libcef.dll missing: $cefDll" }
+    $actual = (Get-FileHash -LiteralPath $cefDll -Algorithm SHA256).Hash.ToLowerInvariant()
+    $expected = $env:ENODE_CEF_EXPECT_LIBCEF_SHA256.Trim().ToLowerInvariant()
+    if ($actual -ne $expected) {
+        throw "libcef.dll is not the codec-enabled build (expected $expected, got $actual)"
+    }
+    Write-Host "CEF codecs -> libcef.dll sha256 $actual"
+}
+
 # 许可与第三方声明随包分发
 Copy-Item (Join-Path $repoRoot 'LICENSE') (Join-Path $rel 'LICENSE') -Force
 Copy-Item (Join-Path $repoRoot 'THIRD_PARTY_NOTICES.md') (Join-Path $rel 'THIRD_PARTY_NOTICES.md') -Force

@@ -14,6 +14,25 @@ set(CEF_SHA256 "17b7b9f9f8e33c571631e3fb3ed84a48a0ea9d7e54f9f7d40d207f019c6a02d5
 set(CEF_EXTRACT_DIR "${CMAKE_CURRENT_BINARY_DIR}/cef")
 set(CEF_ROOT "${CEF_EXTRACT_DIR}/root")
 
+# CI 用 ENODE_CEF_TARBALL 注入带 H.264/AAC 的自定义分发包；归档顶层目录
+# 仍须叫 ${CEF_DISTRIBUTION}，以便复用下面的解压和重命名逻辑。
+set(CEF_INJECTED FALSE)
+if(DEFINED ENV{ENODE_CEF_TARBALL} AND NOT "$ENV{ENODE_CEF_TARBALL}" STREQUAL "")
+  if(NOT DEFINED ENV{ENODE_CEF_SHA256} OR "$ENV{ENODE_CEF_SHA256}" STREQUAL "")
+    message(FATAL_ERROR "ENODE_CEF_TARBALL is set but ENODE_CEF_SHA256 is empty")
+  endif()
+  set(CEF_TARBALL "$ENV{ENODE_CEF_TARBALL}")
+  set(CEF_SHA256 "$ENV{ENODE_CEF_SHA256}")
+  set(CEF_INJECTED TRUE)
+  if(NOT EXISTS "${CEF_TARBALL}")
+    message(FATAL_ERROR "ENODE_CEF_TARBALL does not exist: ${CEF_TARBALL}")
+  endif()
+endif()
+
+if(DEFINED ENV{ENODE_CEF_EXPECT_LIBCEF_SHA256} AND NOT "$ENV{ENODE_CEF_EXPECT_LIBCEF_SHA256}" STREQUAL "")
+  set(CEF_EXPECT_LIBCEF_SHA256 "$ENV{ENODE_CEF_EXPECT_LIBCEF_SHA256}")
+endif()
+
 if(NOT EXISTS "${CEF_ROOT}")
     message(STATUS "Downloading CEF ${CEF_VERSION}...")
     file(MAKE_DIRECTORY "${CEF_DOWNLOAD_DIR}")
@@ -53,6 +72,9 @@ if(NOT EXISTS "${CEF_ROOT}")
     if(NOT EXTRACT_RESULT EQUAL 0)
         message(FATAL_ERROR "Failed to extract CEF tarball.")
     endif()
+    if(NOT EXISTS "${CEF_EXTRACT_DIR}/${CEF_DISTRIBUTION}")
+        message(FATAL_ERROR "CEF archive must contain ${CEF_DISTRIBUTION} at its top level.")
+    endif()
     file(RENAME "${CEF_EXTRACT_DIR}/${CEF_DISTRIBUTION}" "${CEF_EXTRACT_DIR}/root")
     
     # Patch CEF variables to ensure it uses /MD instead of /MT
@@ -65,6 +87,25 @@ if(NOT EXISTS "${CEF_ROOT}")
 endif()
 
 set(CEF_ROOT "${CEF_EXTRACT_DIR}/root")
+
+if(CEF_INJECTED)
+    message(STATUS "CEF: using injected archive ${CEF_TARBALL}")
+endif()
+
+if(DEFINED CEF_EXPECT_LIBCEF_SHA256)
+    if(NOT EXISTS "${CEF_ROOT}/Release/libcef.dll")
+        message(FATAL_ERROR "Missing ${CEF_ROOT}/Release/libcef.dll")
+    endif()
+    file(SHA256 "${CEF_ROOT}/Release/libcef.dll" ACTUAL_LIBCEF_SHA256)
+    string(TOLOWER "${ACTUAL_LIBCEF_SHA256}" ACTUAL_LIBCEF_SHA256)
+    string(TOLOWER "${CEF_EXPECT_LIBCEF_SHA256}" EXPECTED_LIBCEF_SHA256)
+    if(NOT ACTUAL_LIBCEF_SHA256 STREQUAL EXPECTED_LIBCEF_SHA256)
+        message(FATAL_ERROR "libcef.dll is not the codec-enabled build "
+            "(expected ${EXPECTED_LIBCEF_SHA256}, got ${ACTUAL_LIBCEF_SHA256}); "
+            "remove ${CEF_EXTRACT_DIR} and rebuild")
+    endif()
+    message(STATUS "CEF libcef.dll SHA256 verified: ${ACTUAL_LIBCEF_SHA256}")
+endif()
 
 set(CEF_INCLUDE_DIR "${CEF_ROOT}")
 set(CEF_LIBRARY_DIR "${CEF_ROOT}/Release")

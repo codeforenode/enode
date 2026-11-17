@@ -47,6 +47,11 @@ jobs:
     name: Windows
     needs: verify
     runs-on: windows-latest
+    env:
+      ENODE_CEF_ARCHIVE_NAME: enode_cef_149.0.7827.156_chrome_win64.tar.bz2
+      ENODE_CEF_ARCHIVE_SHA256: e25a19a756aab54e0ab13ce0bbb9c342246d883fdbf39e82cca04f5f225a4f18
+      ENODE_CEF_EXPECT_LIBCEF_SHA256: b5fc4d96141bb5b33370e285b2795131914ec3d9fcfac1cb2836609188b6ae7a
+      ENODE_CEF_DIR: ${{ github.workspace }}/.cef-cache
     steps:
       - uses: actions/checkout@v4
 
@@ -58,6 +63,42 @@ jobs:
 
       - name: Install Inno Setup
         run: choco install innosetup -y --no-progress
+
+      - name: Fetch codec-enabled CEF
+        shell: bash
+        env:
+          CEF_URL_OVERRIDE: ${{ secrets.ENODE_CEF_URL }}
+          CEF_SHA256_OVERRIDE: ${{ secrets.ENODE_CEF_SHA256 }}
+          CEF_TOKEN: ${{ secrets.ENODE_CEF_TOKEN }}
+        run: |
+          set -euo pipefail
+          archive="$ENODE_CEF_DIR/$ENODE_CEF_ARCHIVE_NAME"
+          mkdir -p "$ENODE_CEF_DIR"
+          if [ -n "${CEF_URL_OVERRIDE:-}" ] && [ -z "${CEF_SHA256_OVERRIDE:-}" ]; then
+            echo "::error::ENODE_CEF_URL is set but ENODE_CEF_SHA256 is empty"
+            exit 1
+          fi
+          url="${CEF_URL_OVERRIDE:-https://github.com/${GITHUB_REPOSITORY}/releases/download/cef-149.0.7827.156/$ENODE_CEF_ARCHIVE_NAME}"
+          sha="${CEF_SHA256_OVERRIDE:-$ENODE_CEF_ARCHIVE_SHA256}"
+          if [ ! -f "$archive" ]; then
+            auth=()
+            if [ -n "${CEF_TOKEN:-}" ]; then auth=(-H "Authorization: Bearer $CEF_TOKEN"); fi
+            if [[ "$url" == https://api.github.com/*/releases/assets/* ]]; then
+              auth+=(-H "Accept: application/octet-stream")
+            fi
+            if ! curl -fL --retry 5 --retry-delay 5 "${auth[@]}" -o "$archive" "$url"; then
+              echo "::error::failed to download the codec-enabled CEF archive. Upload it to the cef-149.0.7827.156 release, or set ENODE_CEF_URL/ENODE_CEF_SHA256 secrets."
+              exit 1
+            fi
+          fi
+          if ! echo "$sha  $archive" | sha256sum -c -; then
+            echo "::error::codec-enabled CEF archive checksum mismatch"
+            exit 1
+          fi
+          {
+            echo "ENODE_CEF_TARBALL=$archive"
+            echo "ENODE_CEF_SHA256=$sha"
+          } >> "$GITHUB_ENV"
 
       - name: Build and package
         working-directory: b_player

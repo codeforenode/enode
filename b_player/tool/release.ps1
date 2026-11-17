@@ -26,8 +26,8 @@ $repoRoot = Split-Path -Parent $bpDir
 $publicRepo = 'codeforenode/enode'
 $publicUrl = "https://github.com/$publicRepo"
 $actionsUrl = "$publicUrl/actions/workflows/release.yml"
-$publicName = 'gytangyao'
-$publicMail = 'gytangyao@users.noreply.github.com'
+$publicName = 'codeforenode'
+$publicMail = '354732222+codeforenode@users.noreply.github.com'
 
 function Show-Step([string]$Text) {
     Write-Host "`n=== $Text ===" -ForegroundColor Cyan

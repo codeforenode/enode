@@ -69,7 +69,35 @@ release.bat -Proxy http://127.0.0.1:7890   # GitHub 走代理（省略时自动�
 
 推送 `v<版本名>` 后，[`release`](.github/workflows/release.yml) 工作流会校验 tag 与 `pubspec.yaml`
 一致，在 Windows 上跑 analyze/test 并构建便携包/安装包，在 Ubuntu 上构建 APK，
-最后自动发布 Release。Windows 构建会从 Spotify CDN 拉取固定版本 CEF，通常 20–30 分钟。
+最后自动发布 Release。Windows 构建会取固定版本的 CEF，通常 20–30 分钟。
+
+Windows 包需要能解码 H.264/AAC 的自定义 CEF。工作流从同名仓库的
+`cef-149.0.7827.156` Release 下载 `enode_cef_149.0.7827.156_chrome_win64.tar.bz2`，
+校验归档 SHA256 和最终 `libcef.dll` SHA256；资产缺失或不匹配会直接失败，不会静默退回 stock。
+该资产只需上传一次，并用 prerelease 打标，避免被应用更新检查当成最新版：
+
+```bash
+gh release create cef-149.0.7827.156 enode_cef_149.0.7827.156_chrome_win64.tar.bz2 \
+  --repo codeforenode/enode --prerelease --title "CEF 149 codec runtime"
+# 已存在时改用 gh release upload cef-149.0.7827.156 <文件> --clobber
+```
+
+也可在 GitHub 网页的 Releases 里新建 `cef-149.0.7827.156` 并上传该文件。归档顶层目录必须是
+`cef_binary_149.0.4+g2f1bfd8+chromium-149.0.7827.156_windows64_minimal`。若改用私有地址，
+在 Actions secrets 中设置 `ENODE_CEF_URL`、`ENODE_CEF_SHA256`，可选 `ENODE_CEF_TOKEN`
+（GitHub 私有 Release 资产需用 API asset URL）；替换归档后同步更新
+`.github/workflows/release.yml` 的 `ENODE_CEF_ARCHIVE_SHA256`。
+
+本地也可以显式注入同一份归档；不设置时仍按 stock CEF 构建（无 MP4）：
+
+```powershell
+$env:ENODE_CEF_TARBALL = "D:\path\enode_cef_149.0.7827.156_chrome_win64.tar.bz2"
+$env:ENODE_CEF_SHA256 = "<归档 SHA256>"
+$env:ENODE_CEF_EXPECT_LIBCEF_SHA256 = "<libcef.dll SHA256>"
+flutter build windows --release
+```
+
+该归档含 H.264/AAC 编解码器；公开镜像或分发前需自行确认相关专利许可。
 
 Android release 包使用专用 release keystore 签名；换证书会导致已安装设备无法覆盖升级。首次使用先生成证书：
 
