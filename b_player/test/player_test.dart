@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -8,9 +10,12 @@ import 'package:b_player/edge/config.dart';
 import 'package:b_player/edge/library.dart';
 import 'package:b_player/edge/player_engine.dart';
 import 'package:b_player/edge/protocol.dart';
-import 'package:b_player/l10n/l10n.dart';
 import 'package:b_player/log.dart';
 import 'package:b_player/state/app_state.dart';
+import 'package:b_player/state/app_settings.dart';
+import 'package:b_player/ui/settings_dialog.dart';
+
+import 'l10n_harness.dart';
 
 const _mqtt = MqttConfig(enabled: false);
 
@@ -136,6 +141,31 @@ class _FakeEngine implements AudioEngine {
   void emitError(String message) => _error.add(message);
 }
 
+class _OutputEngine extends _FakeEngine implements AudioOutputEngine {
+  final devices = StreamController<List<AudioOutputDevice>>.broadcast(sync: true);
+  final outputs = <String>[];
+  bool failSelection = false;
+
+  @override
+  Stream<List<AudioOutputDevice>> get audioDevicesStream => devices.stream;
+
+  @override
+  Future<List<AudioOutputDevice>> getAudioDevices() async =>
+      const [AudioOutputDevice('speaker', '扬声器')];
+
+  @override
+  Future<void> setAudioDevice(AudioOutputDevice device) async {
+    outputs.add(device.id);
+    if (failSelection && device.id != 'auto') throw StateError('选择失败');
+  }
+
+  @override
+  Future<void> dispose() async {
+    await devices.close();
+    await super.dispose();
+  }
+}
+
 ({AppState state, _FakeEngine engine, _FakeSource source}) _build({
   Set<String> failingKeys = const {},
   Duration watchdog = const Duration(seconds: 8),
@@ -162,6 +192,78 @@ Future<EnqueueResult> _enqueue(AppState state, String key) async {
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  testWidgets('Windows 设置选择失败后下拉框仍显示实际系统默认', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    useTraditionalChinese();
+    final engine = _OutputEngine()..failSelection = true;
+    final state = AppState(mqtt: _mqtt, library: Library([]), engine: engine);
+    final settings = AppSettings();
+    addTearDown(state.dispose);
+    addTearDown(settings.dispose);
+    await tester.pumpWidget(localizedApp(home: Builder(builder: (context) =>
+      TextButton(onPressed: () => showSettings(context, state: state, settings: settings,
+        onlineUnlocked: false, onUnlockOnline: () {}), child: const Text('设置')))));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('设置'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(l10n.audioOutputTitle));
+    await tester.pumpAndSettle();
+    final dropdown = find.byType(DropdownButton<String>);
+    await tester.tap(dropdown);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('扬声器').last);
+    await tester.pumpAndSettle();
+    expect(tester.widget<DropdownButton<String>>(dropdown).value, 'auto');
+    expect(find.text(l10n.audioOutputSelectionFailed('扬声器')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    debugDefaultTargetPlatformOverride = null;
+  }, skip: !Platform.isWindows);
+
+  test('输出选择、拔出和选择失败不改变队列、进度或播放控制', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final engine = _OutputEngine();
+    final tracks = [
+      Track(trackKey: 'fake:a', title: '甲', artist: 'A', durationMs: 3000, sourceId: 'fake'),
+      Track(trackKey: 'fake:b', title: '乙', artist: 'B', durationMs: 3000, sourceId: 'fake'),
+    ];
+    final state = AppState(
+      mqtt: _mqtt,
+      library: Library([_FakeSource(tracks)], tracks: tracks),
+      engine: engine,
+    );
+    addTearDown(state.dispose);
+    await state.audioOutput!.ready;
+    await _enqueue(state, 'fake:a');
+    await _enqueue(state, 'fake:b');
+    await pumpEventQueue();
+    engine.emitPosition(1250);
+    await pumpEventQueue();
+    state.togglePlay();
+    await pumpEventQueue();
+    final queue = [...state.queue];
+    final opened = [...engine.opened];
+    final pauses = engine.pauseCalls;
+    await state.audioOutput!.select(const AudioOutputDevice('speaker', '扬声器'));
+    engine.devices.add([]);
+    await state.audioOutput!.settled;
+    engine.devices.add(const [AudioOutputDevice('speaker', '扬声器')]);
+    engine.failSelection = true;
+    await state.audioOutput!.select(const AudioOutputDevice('speaker', '扬声器'));
+    expect(state.queue, queue);
+    expect(state.nowPlaying!.positionMs, 1250);
+    expect(state.playing, isFalse);
+    expect(engine.opened, opened);
+    expect(engine.stopCalls, 0);
+    expect(engine.pauseCalls, pauses);
+    expect(engine.playCalls, 0);
+    expect(engine.lastSeek, isNull);
+    expect(state.playbackError, isNull);
+    expect(state.audioOutput!.message, isNotNull);
+  });
 
   test('入队后解析播放地址、打开引擎并开始播放', () async {
     final h = _build();

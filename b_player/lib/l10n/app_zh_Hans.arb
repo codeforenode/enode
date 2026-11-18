@@ -1,6 +1,17 @@
 {
   "@@locale": "zh_Hans",
 
+  "audioOutputTitle": "声音输出",
+  "audioOutputDevice": "歌曲输出设备",
+  "audioOutputSystem": "系统默认",
+  "audioOutputHint": "仅用于歌曲播放，设备选择保存在本机。",
+  "audioOutputBusy": "正在更新设备…",
+  "audioOutputRefresh": "刷新设备",
+  "audioOutputUnavailable": "设备“{name}”不可用，已切换到系统默认。",
+  "audioOutputSelectionFailed": "无法选择“{name}”，已切换到系统默认。",
+  "audioOutputFallbackFailed": "无法切换到系统默认，请检查声音设备后重新选择。",
+  "audioOutputLoadFailed": "无法读取声音设备或偏好，请刷新设备后重新选择。",
+  "audioOutputSaveFailed": "声音输出已更改，但偏好保存失败，请重新选择以重试。",
   "settingsTitle": "设置",
   "done": "完成",
   "close": "关闭",

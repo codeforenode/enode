@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:media_kit/media_kit.dart';
 
@@ -21,11 +22,53 @@ abstract class AudioEngine {
   Future<void> dispose();
 }
 
+class AudioOutputDevice {
+  const AudioOutputDevice(this.id, this.name);
+
+  static const system = AudioOutputDevice('auto', '');
+  final String id;
+  final String name;
+}
+
+/// 可选能力，旧播放后端及只测试播放的假引擎无需实现设备管理。
+abstract interface class AudioOutputEngine {
+  Stream<List<AudioOutputDevice>> get audioDevicesStream;
+  Future<List<AudioOutputDevice>> getAudioDevices();
+  Future<void> setAudioDevice(AudioOutputDevice device);
+}
+
 /// media_kit（libmpv）后端；构造前必须已调用 `MediaKit.ensureInitialized()`。
-class MediaKitEngine implements AudioEngine {
+class MediaKitEngine implements AudioEngine, AudioOutputEngine {
   MediaKitEngine() : _player = Player();
 
   final Player _player;
+
+  @override
+  Stream<List<AudioOutputDevice>> get audioDevicesStream =>
+      _player.stream.audioDevices.map((devices) => [
+            for (final device in devices)
+              AudioOutputDevice(device.name, device.description),
+          ]);
+
+  @override
+  Future<List<AudioOutputDevice>> getAudioDevices() async {
+    // state.audioDevices 初始只有 auto 占位项，不能据此判定保存的设备已丢失。
+    final native = _player.platform as NativePlayer;
+    final value = await native.getProperty('audio-device-list');
+    final devices = jsonDecode(value) as List<dynamic>;
+    return [
+      for (final device in devices)
+        AudioOutputDevice(device['name'] as String, device['description'] as String),
+    ];
+  }
+
+  @override
+  Future<void> setAudioDevice(AudioOutputDevice device) async {
+    await _player.setAudioDevice(AudioDevice(device.id, device.name));
+    // 1.2.6 的 setter 不把所有 mpv 属性错误作为异常抛出，读回确认后再保存偏好。
+    final selected = await (_player.platform as NativePlayer).getProperty('audio-device');
+    if (selected != device.id) throw StateError('音频输出设备设置未生效');
+  }
 
   @override
   Stream<Duration> get positionStream => _player.stream.position;

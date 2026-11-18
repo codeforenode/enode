@@ -2,8 +2,18 @@
 
 #include <optional>
 
+#include <commctrl.h>
+#include <uiautomation.h>
+
 #include "flutter/generated_plugin_registrant.h"
 #include "desktop_multi_window/desktop_multi_window_plugin.h"
+
+namespace {
+
+// Subclass ID for the accessibility filter; arbitrary but stable per window.
+constexpr UINT_PTR kA11ySubclassId = 0x656E6F6465ULL;  // "enode"
+
+}  // namespace
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
@@ -34,6 +44,16 @@ bool FlutterWindow::OnCreate() {
   });
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
+  // Flutter 3.44.8 引擎在按需构建无障碍语义树后，命中测试存在
+  // release-only 访问违例（flutter/flutter#195653，生产环境实崩）。
+  // 屏蔽视图窗口上的 MSAA/UIA 查询，让引擎不启用语义树即可绕开。
+  // 需要（或想排查）读屏支持时设 ENODE_A11Y=1 恢复原有行为。
+  if (!ShouldBlockAccessibility()) {
+    HWND view_hwnd = flutter_controller_->view()->GetNativeWindow();
+    SetWindowSubclass(view_hwnd, &FlutterWindow::AccessibilityWndProc,
+                      kA11ySubclassId, 0);
+  }
+
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
     this->Show();
   });
@@ -48,10 +68,42 @@ bool FlutterWindow::OnCreate() {
 
 void FlutterWindow::OnDestroy() {
   if (flutter_controller_) {
+    HWND view_hwnd = flutter_controller_->view()->GetNativeWindow();
+    RemoveWindowSubclass(view_hwnd, &FlutterWindow::AccessibilityWndProc,
+                         kA11ySubclassId);
+  }
+  if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }
 
   Win32Window::OnDestroy();
+}
+
+bool FlutterWindow::ShouldBlockAccessibility() {
+  char value[8] = {};
+  const DWORD length =
+      GetEnvironmentVariableA("ENODE_A11Y", value, sizeof(value));
+  return length > 0 && length < sizeof(value) && value[0] == '1';
+}
+
+LRESULT FlutterWindow::AccessibilityWndProc(HWND hwnd, UINT message,
+                                            WPARAM wparam, LPARAM lparam,
+                                            UINT_PTR subclass_id,
+                                            DWORD_PTR ref_data) noexcept {
+  if (message == WM_GETOBJECT) {
+    // Only the lower 32 bits of lparam hold the object id; Windows sometimes
+    // sign-extends it (see the engine's own OnGetObject parsing).
+    const DWORD obj_id = static_cast<DWORD>(static_cast<DWORD_PTR>(lparam));
+    // OBJID_CLIENT covers MSAA requests (AccessibleObjectFromPoint etc.).
+    // UiaRootObjectId covers UI Automation root queries. Returning 0 tells
+    // the caller this window provides no accessibility object, so Flutter
+    // never receives the request that enables its semantics tree.
+    if (obj_id == static_cast<DWORD>(OBJID_CLIENT) ||
+        obj_id == static_cast<DWORD>(UiaRootObjectId)) {
+      return 0;
+    }
+  }
+  return DefSubclassProc(hwnd, message, wparam, lparam);
 }
 
 LRESULT

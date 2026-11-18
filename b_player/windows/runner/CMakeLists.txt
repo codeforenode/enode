@@ -39,6 +39,9 @@ target_compile_options(${BINARY_NAME} PRIVATE "/utf-8")
 # dependencies here.
 target_link_libraries(${BINARY_NAME} PRIVATE flutter flutter_wrapper_app)
 target_link_libraries(${BINARY_NAME} PRIVATE "dwmapi.lib")
+# WM_GETOBJECT 子类化拦截（绕开 Flutter 无障碍命中测试崩溃）用 Comctl32 的
+# SetWindowSubclass/DefSubclassProc。
+target_link_libraries(${BINARY_NAME} PRIVATE "comctl32.lib")
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 
 # Run the Flutter tool portions of the build. This must not be removed.

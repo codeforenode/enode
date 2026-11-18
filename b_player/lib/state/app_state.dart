@@ -24,6 +24,7 @@ import '../edge/sources/webdav_manager.dart';
 import '../edge/sources/webdav_source.dart';
 import '../l10n/l10n.dart';
 import '../log.dart';
+import 'audio_output.dart';
 import 'cast_settings.dart';
 import 'lrc.dart';
 
@@ -76,6 +77,11 @@ class AppState extends ChangeNotifier {
       featured: featured.payload,
       config: mqtt,
     );
+    final outputEngine = engine;
+    if (defaultTargetPlatform == TargetPlatform.windows && outputEngine is AudioOutputEngine) {
+      audioOutput = AudioOutputController(outputEngine as AudioOutputEngine)
+        ..addListener(_onAudioOutputChanged);
+    }
     if (engine == null) {
       _tick = Timer.periodic(const Duration(seconds: 1), (_) => _advance());
     } else {
@@ -104,6 +110,11 @@ class AppState extends ChangeNotifier {
 
   /// 真实播放后端；为 null 时退回演示用的每秒模拟推进（测试/无原生插件环境）。
   final AudioEngine? engine;
+  AudioOutputController? audioOutput;
+
+  void _onAudioOutputChanged() {
+    if (!_disposed) notifyListeners();
+  }
 
   Timer? _tick;
   Timer? _watchdog;
@@ -695,6 +706,8 @@ class AppState extends ChangeNotifier {
       return;
     }
 
+    await audioOutput?.ready;
+    if (_disposed || gen != _playGen) return;
     var current = resolved;
     Object? openError;
     for (var attempt = 0;; attempt++) {
@@ -750,7 +763,7 @@ class AppState extends ChangeNotifier {
       if (_disposed || gen != _playGen) return;
       final np = nowPlaying;
       if (np == null || np.positionMs > 0) return;
-      if (!playing) {
+      if (!playing || (audioOutput?.blocksPlaybackRecovery ?? false)) {
         // 暂停中（含切上一首后 seek 到 0 却还没出进度事件）：不动它，
         // 重新计时等恢复播放——「暂停太久被判死」比「坏链晚 8 秒跳掉」伤得多。
         _armWatchdog(head, gen, allowRecover: allowRecover);
@@ -1123,7 +1136,14 @@ class AppState extends ChangeNotifier {
     unawaited(_durationSub?.cancel());
     unawaited(_completedSub?.cancel());
     unawaited(_errorSub?.cancel());
-    unawaited(engine?.dispose());
+    final output = audioOutput;
+    output?.removeListener(_onAudioOutputChanged);
+    output?.dispose();
+    // 等已进入原生层的设备操作收尾，再释放播放器。
+    unawaited(() async {
+      await output?.settled;
+      await engine?.dispose();
+    }());
     edge.dispose();
     super.dispose();
   }

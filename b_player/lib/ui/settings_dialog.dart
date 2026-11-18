@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../app_version.dart';
 import '../edge/edge_node.dart';
+import '../edge/player_engine.dart';
 import '../l10n/l10n.dart';
 import '../legal.dart';
 import '../log.dart';
@@ -20,7 +21,7 @@ import 'screen_cast_panel.dart';
 import 'secret_tap.dart';
 import 'update_bits.dart';
 
-enum _Tab { display, broadcast, sources, cast, about }
+enum _Tab { display, audio, broadcast, sources, cast, about }
 
 /// 铺满窗口的设置页：头部与等宽设置项固定，切换只替换内容区，窗口尺寸不变。
 /// 「音源」段由「关于」里的版本号解锁，未解锁时整段不出现。
@@ -86,6 +87,7 @@ class _SettingsPageState extends State<_SettingsPage> {
 
   List<_Tab> get _tabs => [
         _Tab.display,
+        if (Platform.isWindows && widget.state.audioOutput != null) _Tab.audio,
         _Tab.broadcast,
         if (_unlocked) _Tab.sources,
         // 投放入口跟着真实能力走：非 Windows、或一台显示器都没扫到时整段不出现。
@@ -95,6 +97,7 @@ class _SettingsPageState extends State<_SettingsPage> {
 
   String _tabLabel(AppL10n t, _Tab tab) => switch (tab) {
         _Tab.display => t.tabDisplay,
+        _Tab.audio => t.audioOutputTitle,
         _Tab.broadcast => t.tabBroadcast,
         _Tab.sources => t.tabSources,
         _Tab.cast => t.tabCast,
@@ -222,6 +225,10 @@ class _SettingsPageState extends State<_SettingsPage> {
               child: MqttPanel(state: widget.state),
             ),
           ),
+        _Tab.audio => _scrolled(ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 720),
+            child: _AudioOutput(state: widget.state),
+          )),
         _Tab.sources => _scrolled(OnlineSourcesPanel(state: widget.state)),
         _Tab.about => _scrolled(
             ConstrainedBox(
@@ -239,6 +246,64 @@ class _SettingsPageState extends State<_SettingsPage> {
         padding: const EdgeInsets.fromLTRB(_navPad + 2, 16, _navPad + 2, 24),
         child: Align(alignment: Alignment.topLeft, child: child),
       );
+}
+
+class _AudioOutput extends StatelessWidget {
+  const _AudioOutput({required this.state});
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final output = state.audioOutput!;
+    return ListenableBuilder(
+      listenable: output,
+      builder: (context, _) {
+        final t = AppL10n.of(context);
+        final selectedAvailable = output.devices.any((d) => d.id == output.selected.id);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            FieldLabel(t.audioOutputDevice),
+            const SizedBox(height: 8),
+            DropdownButton<String>(
+              value: selectedAvailable ? output.selected.id : null,
+              isExpanded: true,
+              dropdownColor: C.panel,
+              items: [
+                for (final device in output.devices)
+                  DropdownMenuItem(
+                    value: device.id,
+                    child: Text(
+                      device.id == AudioOutputDevice.system.id
+                          ? t.audioOutputSystem
+                          : (device.name.isEmpty ? device.id : device.name),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+              ],
+              onChanged: output.busy || !output.loaded
+                  ? null
+                  : (id) {
+                      if (id != null) {
+                        unawaited(output.select(output.devices.firstWhere((d) => d.id == id)));
+                      }
+                    },
+            ),
+            const SizedBox(height: 8),
+            Text(t.audioOutputHint, style: kMini),
+            TextButton.icon(
+              onPressed: output.busy ? null : () => unawaited(output.refresh()),
+              icon: const Icon(Icons.refresh_rounded, size: 16),
+              label: Text(output.busy ? t.audioOutputBusy : t.audioOutputRefresh),
+            ),
+            if (output.message != null)
+              Text(output.message!, style: kMini.copyWith(color: C.bad)),
+          ],
+        );
+      },
+    );
+  }
 }
 
 class _Display extends StatelessWidget {

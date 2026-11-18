@@ -37,3 +37,6 @@ __pycache__/
 
 # hand-made whole-repo archives, kept locally only
 /*.rar
+
+# Gradle 本地缓存（CEF 插件 Android 侧构建产物，勿入库）
+.gradle/

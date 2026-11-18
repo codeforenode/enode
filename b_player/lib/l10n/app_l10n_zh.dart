@@ -9,6 +9,43 @@ class AppL10nZh extends AppL10n {
   AppL10nZh([String locale = 'zh']) : super(locale);
 
   @override
+  String get audioOutputTitle => '聲音輸出';
+
+  @override
+  String get audioOutputDevice => '歌曲輸出裝置';
+
+  @override
+  String get audioOutputSystem => '系統預設';
+
+  @override
+  String get audioOutputHint => '僅用於歌曲播放，裝置選擇儲存在本機。';
+
+  @override
+  String get audioOutputBusy => '正在更新裝置…';
+
+  @override
+  String get audioOutputRefresh => '重新整理裝置';
+
+  @override
+  String audioOutputUnavailable(String name) {
+    return '裝置「$name」無法使用，已切換至系統預設。';
+  }
+
+  @override
+  String audioOutputSelectionFailed(String name) {
+    return '無法選擇「$name」，已切換至系統預設。';
+  }
+
+  @override
+  String get audioOutputFallbackFailed => '無法切換至系統預設，請檢查聲音裝置後重新選擇。';
+
+  @override
+  String get audioOutputLoadFailed => '無法讀取聲音裝置或偏好，請重新整理裝置後再選擇。';
+
+  @override
+  String get audioOutputSaveFailed => '聲音輸出已變更，但偏好儲存失敗，請重新選擇以重試。';
+
+  @override
   String get settingsTitle => '設定';
 
   @override
@@ -2116,6 +2153,43 @@ class AppL10nZhHans extends AppL10nZh {
   AppL10nZhHans() : super('zh_Hans');
 
   @override
+  String get audioOutputTitle => '声音输出';
+
+  @override
+  String get audioOutputDevice => '歌曲输出设备';
+
+  @override
+  String get audioOutputSystem => '系统默认';
+
+  @override
+  String get audioOutputHint => '仅用于歌曲播放，设备选择保存在本机。';
+
+  @override
+  String get audioOutputBusy => '正在更新设备…';
+
+  @override
+  String get audioOutputRefresh => '刷新设备';
+
+  @override
+  String audioOutputUnavailable(String name) {
+    return '设备“$name”不可用，已切换到系统默认。';
+  }
+
+  @override
+  String audioOutputSelectionFailed(String name) {
+    return '无法选择“$name”，已切换到系统默认。';
+  }
+
+  @override
+  String get audioOutputFallbackFailed => '无法切换到系统默认，请检查声音设备后重新选择。';
+
+  @override
+  String get audioOutputLoadFailed => '无法读取声音设备或偏好，请刷新设备后重新选择。';
+
+  @override
+  String get audioOutputSaveFailed => '声音输出已更改，但偏好保存失败，请重新选择以重试。';
+
+  @override
   String get settingsTitle => '设置';
 
   @override
@@ -4220,6 +4294,43 @@ class AppL10nZhHans extends AppL10nZh {
 /// The translations for Chinese, using the Han script (`zh_Hant`).
 class AppL10nZhHant extends AppL10nZh {
   AppL10nZhHant() : super('zh_Hant');
+
+  @override
+  String get audioOutputTitle => '聲音輸出';
+
+  @override
+  String get audioOutputDevice => '歌曲輸出裝置';
+
+  @override
+  String get audioOutputSystem => '系統預設';
+
+  @override
+  String get audioOutputHint => '僅用於歌曲播放，裝置選擇儲存在本機。';
+
+  @override
+  String get audioOutputBusy => '正在更新裝置…';
+
+  @override
+  String get audioOutputRefresh => '重新整理裝置';
+
+  @override
+  String audioOutputUnavailable(String name) {
+    return '裝置「$name」無法使用，已切換至系統預設。';
+  }
+
+  @override
+  String audioOutputSelectionFailed(String name) {
+    return '無法選擇「$name」，已切換至系統預設。';
+  }
+
+  @override
+  String get audioOutputFallbackFailed => '無法切換至系統預設，請檢查聲音裝置後重新選擇。';
+
+  @override
+  String get audioOutputLoadFailed => '無法讀取聲音裝置或偏好，請重新整理裝置後再選擇。';
+
+  @override
+  String get audioOutputSaveFailed => '聲音輸出已變更，但偏好儲存失敗，請重新選擇以重試。';
 
   @override
   String get settingsTitle => '設定';

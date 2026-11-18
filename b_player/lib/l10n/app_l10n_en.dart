@@ -9,6 +9,47 @@ class AppL10nEn extends AppL10n {
   AppL10nEn([String locale = 'en']) : super(locale);
 
   @override
+  String get audioOutputTitle => 'Audio output';
+
+  @override
+  String get audioOutputDevice => 'Song output device';
+
+  @override
+  String get audioOutputSystem => 'System default';
+
+  @override
+  String get audioOutputHint =>
+      'Applies to song playback only. The device is saved on this computer.';
+
+  @override
+  String get audioOutputBusy => 'Updating devices…';
+
+  @override
+  String get audioOutputRefresh => 'Refresh devices';
+
+  @override
+  String audioOutputUnavailable(String name) {
+    return 'Device “$name” is unavailable. Using system default.';
+  }
+
+  @override
+  String audioOutputSelectionFailed(String name) {
+    return 'Could not select “$name”. Using system default.';
+  }
+
+  @override
+  String get audioOutputFallbackFailed =>
+      'Could not switch to system default. Check your audio devices and select again.';
+
+  @override
+  String get audioOutputLoadFailed =>
+      'Could not load audio devices or preferences. Refresh devices and select again.';
+
+  @override
+  String get audioOutputSaveFailed =>
+      'Audio output changed, but the preference could not be saved. Select again to retry.';
+
+  @override
   String get settingsTitle => 'Settings';
 
   @override

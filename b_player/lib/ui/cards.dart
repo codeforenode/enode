@@ -160,6 +160,10 @@ class NowPlayingCard extends StatelessWidget {
               _TimeRow(state: state),
               const SizedBox(height: 8),
               _Controls(state: state, compact: compact),
+              if (state.audioOutput?.message != null) ...[
+                const SizedBox(height: 10),
+                _ErrorBanner(text: state.audioOutput!.message!),
+              ],
               if (state.playbackError != null) ...[
                 const SizedBox(height: 10),
                 _ErrorBanner(text: state.playbackError!),

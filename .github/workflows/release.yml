@@ -199,6 +199,8 @@ jobs:
       - name: Prepare assets and changelog
         run: |
           set -euo pipefail
+          # checkout 按 commit 检出 tag 时本地是轻量 tag，注释正文要用远端 annotated tag 覆盖回来。
+          git fetch --force origin "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
           name="${GITHUB_REF_NAME#v}"
           mv dist/app-release.apk "dist/eNode-${name}-android.apk"
           repo_url="https://github.com/${GITHUB_REPOSITORY}"

@@ -99,6 +99,72 @@ abstract class AppL10n {
     Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Hant'),
   ];
 
+  /// No description provided for @audioOutputTitle.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'聲音輸出'**
+  String get audioOutputTitle;
+
+  /// No description provided for @audioOutputDevice.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'歌曲輸出裝置'**
+  String get audioOutputDevice;
+
+  /// No description provided for @audioOutputSystem.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'系統預設'**
+  String get audioOutputSystem;
+
+  /// No description provided for @audioOutputHint.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'僅用於歌曲播放，裝置選擇儲存在本機。'**
+  String get audioOutputHint;
+
+  /// No description provided for @audioOutputBusy.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'正在更新裝置…'**
+  String get audioOutputBusy;
+
+  /// No description provided for @audioOutputRefresh.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'重新整理裝置'**
+  String get audioOutputRefresh;
+
+  /// No description provided for @audioOutputUnavailable.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'裝置「{name}」無法使用，已切換至系統預設。'**
+  String audioOutputUnavailable(String name);
+
+  /// No description provided for @audioOutputSelectionFailed.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'無法選擇「{name}」，已切換至系統預設。'**
+  String audioOutputSelectionFailed(String name);
+
+  /// No description provided for @audioOutputFallbackFailed.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'無法切換至系統預設，請檢查聲音裝置後重新選擇。'**
+  String get audioOutputFallbackFailed;
+
+  /// No description provided for @audioOutputLoadFailed.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'無法讀取聲音裝置或偏好，請重新整理裝置後再選擇。'**
+  String get audioOutputLoadFailed;
+
+  /// No description provided for @audioOutputSaveFailed.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'聲音輸出已變更，但偏好儲存失敗，請重新選擇以重試。'**
+  String get audioOutputSaveFailed;
+
   /// No description provided for @settingsTitle.
   ///
   /// In zh_Hant, this message translates to:
