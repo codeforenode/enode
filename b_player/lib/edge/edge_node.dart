@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:crypto/crypto.dart';
@@ -172,6 +173,22 @@ class EdgeNode extends ChangeNotifier {
       notifyListeners();
       return;
     }
+    // 私有 CA / 自签名证书：把用户导入的 PEM 加进信任链。
+    // 解析失败要在连接前说清楚，否则只会表现为含糊的握手失败。
+    final caPem = config.tls ? config.caCertificate.trim() : '';
+    SecurityContext? securityContext;
+    if (caPem.isNotEmpty) {
+      try {
+        securityContext = SecurityContext(withTrustedRoots: true)
+          ..setTrustedCertificatesBytes(utf8.encode(caPem));
+      } catch (e) {
+        status = EdgeStatus.error;
+        lastError = l10n.mqttCertInvalid('$e');
+        EnodeLog.e('mqtt', 'CA 证书无法加载（PEM 格式有误？）', e);
+        notifyListeners();
+        return;
+      }
+    }
     status = EdgeStatus.connecting;
     lastError = null;
     notifyListeners();
@@ -184,6 +201,19 @@ class EdgeNode extends ChangeNotifier {
     c.connectTimeoutPeriod = 8000;
     c.autoReconnect = false;
     c.secure = config.tls;
+    if (securityContext != null) c.securityContext = securityContext;
+    if (config.tls && config.allowBadCertificate) {
+      c.onBadCertificate = (_) => true;
+      EnodeLog.w('mqtt', '已按设置跳过 TLS 证书校验 host=${config.host}');
+    }
+    if (config.tls) {
+      EnodeLog.i(
+        'mqtt',
+        'TLS 连接 host=${config.host}:${config.port} '
+        'ca=${caPem.isEmpty ? '系统默认' : '自定义'} '
+        'skipVerify=${config.allowBadCertificate}',
+      );
+    }
     final will = jsonEncode({
       'v': protocolVersion,
       'state': stateOffline,
@@ -211,7 +241,7 @@ class EdgeNode extends ChangeNotifier {
         config.password.isEmpty ? null : config.password,
       );
     } catch (e) {
-      lastError = l10n.connectFailed('$e');
+      lastError = _connectErrorText(e);
       EnodeLog.e('mqtt', '连接失败 host=${config.host} port=${config.port}', e);
       status = EdgeStatus.error;
       notifyListeners();
@@ -226,6 +256,15 @@ class EdgeNode extends ChangeNotifier {
       notifyListeners();
       _scheduleRetry();
     }
+  }
+
+  /// 证书类失败单独换成可操作的提示，别让现场只看到一句英文握手异常。
+  String _connectErrorText(Object error) {
+    final text = '$error';
+    final certificateIssue = config.tls &&
+        RegExp(r'CERTIFICATE|Handshake|TlsException|certificate|证书|憑證', caseSensitive: false)
+            .hasMatch(text);
+    return certificateIssue ? l10n.connectFailedCert(text) : l10n.connectFailed(text);
   }
 
   void _handleConnected() {

@@ -1,13 +1,17 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../edge/config.dart';
 import '../edge/mqtt_paste.dart';
 import '../l10n/l10n.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'cards.dart';
 import 'form_bits.dart';
+import 'image_path_picker.dart';
 
 /// 广播（MQTT）连接设置：整段粘贴一次，自动识别地址、端口、账号与密码。
 class MqttPanel extends StatefulWidget {
@@ -20,15 +24,26 @@ class MqttPanel extends StatefulWidget {
 
 class _MqttPanelState extends State<MqttPanel> {
   final _input = TextEditingController();
+  late final TextEditingController _caInput;
   String? _error;
   String? _ok;
+  String? _caError;
   bool _busy = false;
   Timer? _okTimer;
+  String _lastCertPath = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _caInput =
+        TextEditingController(text: widget.state.edge.config.caCertificate);
+  }
 
   @override
   void dispose() {
     _okTimer?.cancel();
     _input.dispose();
+    _caInput.dispose();
     super.dispose();
   }
 
@@ -67,18 +82,102 @@ class _MqttPanelState extends State<MqttPanel> {
     setState(() {
       _error = null;
       _ok = null;
+      _caError = null;
       _busy = true;
     });
     try {
       await widget.state.clearMqttConfig();
       if (!mounted) return;
       _input.clear();
+      _caInput.clear();
       _showOk(l10n.mqttCleared);
     } catch (e) {
       if (mounted) setState(() => _error = l10n.clearFailed('$e'));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _applyTls(MqttConfig next, {required String ok}) async {
+    setState(() {
+      _error = null;
+      _ok = null;
+      _busy = true;
+    });
+    try {
+      await widget.state.applyMqttConfig(next);
+      if (mounted) _showOk(ok);
+    } catch (e) {
+      if (mounted) setState(() => _error = l10n.applyFailed('$e'));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  bool _validPem(String pem) {
+    try {
+      SecurityContext(withTrustedRoots: true)
+          .setTrustedCertificatesBytes(utf8.encode(pem));
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _saveCa() async {
+    final config = widget.state.edge.config;
+    if (!config.configured) {
+      setState(() => _caError = l10n.needMqttConfigFirst);
+      return;
+    }
+    final pem = _caInput.text.trim();
+    if (pem.isEmpty) {
+      setState(() => _caError = l10n.mqttCertEmpty);
+      return;
+    }
+    if (!_validPem(pem)) {
+      setState(() => _caError = l10n.mqttCertPemOnly);
+      return;
+    }
+    setState(() => _caError = null);
+    await _applyTls(config.copyWith(caCertificate: pem), ok: l10n.mqttCertSaved);
+  }
+
+  Future<void> _pickCa() async {
+    final picked =
+        await showCertificatePathPicker(context, initialPath: _lastCertPath);
+    if (picked == null || !mounted) return;
+    _lastCertPath = picked;
+    try {
+      final text =
+          utf8.decode(await File(picked).readAsBytes(), allowMalformed: true);
+      if (!text.contains('BEGIN CERTIFICATE')) {
+        setState(() => _caError = l10n.mqttCertPemOnly);
+        return;
+      }
+      _caInput.text = text.trim();
+      await _saveCa();
+    } catch (e) {
+      if (mounted) setState(() => _caError = l10n.mqttCertInvalid('$e'));
+    }
+  }
+
+  Future<void> _clearCa() async {
+    _caInput.clear();
+    setState(() => _caError = null);
+    await _applyTls(
+      widget.state.edge.config.copyWith(caCertificate: ''),
+      ok: l10n.mqttCertCleared,
+    );
+  }
+
+  void _setSkipVerify(bool value) {
+    final config = widget.state.edge.config;
+    if (!config.configured) return;
+    unawaited(_applyTls(
+      config.copyWith(allowBadCertificate: value),
+      ok: value ? l10n.mqttSkipVerifyOn : l10n.mqttSkipVerifyOff,
+    ));
   }
 
   @override
@@ -124,6 +223,84 @@ class _MqttPanelState extends State<MqttPanel> {
             if (edge.lastError != null) ...[
               const SizedBox(height: 8),
               Text(edge.lastError!, style: TextStyle(fontSize: 11.5, color: C.bad)),
+            ],
+            if (config.tls) ...[
+              const SizedBox(height: 12),
+              Panel(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(t.mqttTlsTitle,
+                    style: TextStyle(fontSize: 11.5, color: C.dim, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 6),
+                Text(t.mqttTlsHint, style: kMini),
+                const SizedBox(height: 10),
+                FormInput(
+                  controller: _caInput,
+                  maxLines: 4,
+                  hint: '-----BEGIN CERTIFICATE-----',
+                  onChanged: (_) {
+                    if (_caError != null) setState(() => _caError = null);
+                  },
+                ),
+                const SizedBox(height: 8),
+                Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                  FilledButton(
+                    onPressed: _busy || !config.configured ? null : _saveCa,
+                    style: FilledButton.styleFrom(backgroundColor: C.acc, foregroundColor: C.onAcc),
+                    child: Text(t.mqttCertSave),
+                  ),
+                  TextButton(
+                    onPressed: _busy || !config.configured ? null : _pickCa,
+                    style: TextButton.styleFrom(foregroundColor: C.dim),
+                    child: Text(t.mqttCertPick),
+                  ),
+                  TextButton(
+                    onPressed: _busy || config.caCertificate.isEmpty ? null : _clearCa,
+                    style: TextButton.styleFrom(foregroundColor: C.dim),
+                    child: Text(t.mqttCertClear),
+                  ),
+                ]),
+                const SizedBox(height: 4),
+                Text(
+                  config.caCertificate.trim().isEmpty ? t.mqttCertNone : t.mqttCertConfigured,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: config.caCertificate.trim().isEmpty ? C.faint : C.acc,
+                  ),
+                ),
+                if (_caError != null) ...[
+                  const SizedBox(height: 4),
+                  Text(_caError!, style: TextStyle(fontSize: 11, color: C.bad)),
+                ],
+                const SizedBox(height: 2),
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Checkbox(
+                    value: config.allowBadCertificate,
+                    onChanged: config.configured && !_busy
+                        ? (value) => _setSkipVerify(value ?? false)
+                        : null,
+                    activeColor: C.warn,
+                    visualDensity: VisualDensity.compact,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        t.mqttSkipVerify,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: config.allowBadCertificate ? C.warn : C.dim,
+                        ),
+                      ),
+                    ),
+                  ),
+                ]),
+                if (config.allowBadCertificate)
+                  Text(t.mqttSkipVerifyWarning,
+                      style: TextStyle(fontSize: 11, color: C.bad)),
+              ]),
+              ),
             ],
             const SizedBox(height: 12),
             Panel(

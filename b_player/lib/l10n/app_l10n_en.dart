@@ -395,6 +395,34 @@ class AppL10nEn extends AppL10n {
   String get noImages => 'No images in this folder (png/jpg/jpeg/webp/bmp/gif)';
 
   @override
+  String get pickScriptFile => 'Choose a source script';
+
+  @override
+  String get noScriptFiles => 'No .js files in this folder';
+
+  @override
+  String get scriptPathNote =>
+      'Only .js files are listed; a full path can also be pasted.';
+
+  @override
+  String get scriptPathHint =>
+      'You can also paste a path, e.g. D:\\sources\\lx.js';
+
+  @override
+  String get pickCertFile => 'Choose a certificate file';
+
+  @override
+  String get noCertFiles => 'No .pem / .crt / .cer files in this folder';
+
+  @override
+  String get certPathNote =>
+      'Only .pem / .crt / .cer are listed; the content must be PEM.';
+
+  @override
+  String get certPathHint =>
+      'You can also paste a path, e.g. D:\\certs\\broker.pem';
+
+  @override
   String get mqttIntro =>
       'Paste the whole connection block; broker, port, username and password are detected automatically.';
 
@@ -435,6 +463,64 @@ class AppL10nEn extends AppL10n {
   @override
   String get mqttLocalOnly =>
       'Settings are stored only on this device; passwords never go to logs.';
+
+  @override
+  String get mqttTlsTitle => 'TLS certificate';
+
+  @override
+  String get mqttTlsHint =>
+      'For a self-signed or private-CA broker, import its PEM certificate. The certificate name must match the broker address; otherwise use skip verification.';
+
+  @override
+  String get mqttCertSave => 'Save certificate';
+
+  @override
+  String get mqttCertPick => 'Choose file…';
+
+  @override
+  String get mqttCertClear => 'Clear certificate';
+
+  @override
+  String get mqttCertSaved => 'Certificate applied; reconnecting';
+
+  @override
+  String get mqttCertCleared => 'CA certificate cleared';
+
+  @override
+  String get mqttCertNone => 'No extra certificate';
+
+  @override
+  String get mqttCertConfigured => 'CA certificate imported';
+
+  @override
+  String get mqttCertEmpty => 'Paste the PEM certificate first';
+
+  @override
+  String get mqttCertPemOnly =>
+      'The certificate must be PEM (-----BEGIN CERTIFICATE-----)';
+
+  @override
+  String mqttCertInvalid(String error) {
+    return 'Could not load the certificate: $error';
+  }
+
+  @override
+  String get mqttSkipVerify => 'Skip TLS certificate verification (unsafe)';
+
+  @override
+  String get mqttSkipVerifyOn =>
+      'Certificate verification skipped; reconnecting';
+
+  @override
+  String get mqttSkipVerifyOff =>
+      'Certificate verification restored; reconnecting';
+
+  @override
+  String get mqttSkipVerifyWarning =>
+      'Certificate verification is skipped; the connection could be intercepted.';
+
+  @override
+  String get needMqttConfigFirst => 'Apply the broker settings first';
 
   @override
   String mqttApplied(String host, int port) {
@@ -496,6 +582,11 @@ class AppL10nEn extends AppL10n {
   @override
   String connectFailed(String error) {
     return 'Connection failed: $error';
+  }
+
+  @override
+  String connectFailedCert(String error) {
+    return 'TLS certificate verification failed: $error (import the CA or temporarily skip verification)';
   }
 
   @override
@@ -894,6 +985,28 @@ class AppL10nEn extends AppL10n {
   String importFailedOnline(String error) {
     return 'Couldn\'t import: $error';
   }
+
+  @override
+  String get importLocalScript => 'Choose local JS file…';
+
+  @override
+  String importLocalFailed(String error) {
+    return 'Couldn\'t import the local file: $error';
+  }
+
+  @override
+  String get sourceLocalNotJs => 'Choose a .js source script';
+
+  @override
+  String get sourceLocalMissing => 'The local file no longer exists';
+
+  @override
+  String sourceLocalPath(String path) {
+    return 'Local · $path';
+  }
+
+  @override
+  String get refreshLocalSource => 'Reload from the local file';
 
   @override
   String saveFailed(String error) {

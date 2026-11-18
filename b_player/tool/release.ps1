@@ -198,6 +198,28 @@ try {
         Show-Info '  工作区干净。'
     }
 
+    Show-Step '生成本次变更记录'
+    $logLines = @(Invoke-Git @('-C', $repoRoot, 'log', '--no-merges', '--format=%H%x09%s', 'main') | Where-Object { $_ })
+    $previousRelease = $null
+    foreach ($line in $logLines) {
+        if ($line -match '^[0-9a-fA-F]+\trelease: ') {
+            $previousRelease = ($line -split "`t")[0]
+            break
+        }
+    }
+    $range = if ($previousRelease) { "$previousRelease..HEAD" } else { 'HEAD' }
+    $entries = @(Invoke-Git @('-C', $repoRoot, 'log', '--no-merges', '--format=%s', $range) |
+        Where-Object { $_ -and $_ -notmatch '^release: ' } |
+        Select-Object -First 50)
+    $changelogLines = @($entries | ForEach-Object { "- $_" })
+    if ($changes.Count -gt 0) {
+        $changelogLines += "- 其他改动（$($changes.Count) 个文件，未单独提交）"
+    }
+    if ($changelogLines.Count -eq 0) { $changelogLines = @('- 仅版本号更新') }
+    $changelog = $changelogLines -join "`n"
+    $tagMessage = "eNode $targetName`n`n$changelog"
+    $changelogLines | ForEach-Object { Show-Info "  $_" }
+
     if (-not $DryRun) {
         Show-Step '同步公开仓'
         if ($proxyUrl) {
@@ -298,7 +320,14 @@ try {
 
         $exportTags = @(Invoke-Git @('-C', $tmp, 'tag', '--list', $tagName) | Where-Object { $_ })
         if ($exportTags.Count -eq 0) {
-            Invoke-Git @('-C', $tmp, '-c', "user.name=$publicName", '-c', "user.email=$publicMail", 'tag', '-a', $tagName, '-m', "eNode $targetName") | Out-Null
+            # 变更记录可能含中文；走 UTF-8 文件而不是命令行参数，避免 Windows 代码页转换。
+            $tagMessageFile = Join-Path $env:TEMP ('enode-tag-' + [guid]::NewGuid().ToString('N') + '.txt')
+            try {
+                [System.IO.File]::WriteAllText($tagMessageFile, $tagMessage, (New-Object System.Text.UTF8Encoding($false)))
+                Invoke-Git @('-C', $tmp, '-c', "user.name=$publicName", '-c', "user.email=$publicMail", 'tag', '-a', $tagName, '-F', $tagMessageFile) | Out-Null
+            } finally {
+                Remove-Item -LiteralPath $tagMessageFile -ErrorAction SilentlyContinue
+            }
         }
         Invoke-Git (@('-C', $tmp) + $ghArgs + @('push', 'public', "refs/tags/$tagName")) | Out-Null
         Show-Info "  标签 $tagName 已推送。"

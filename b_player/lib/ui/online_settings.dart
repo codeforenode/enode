@@ -11,6 +11,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import 'cards.dart';
 import 'form_bits.dart';
+import 'image_path_picker.dart';
 
 /// 在线音源管理：导入脚本、启停/排序/测试，以及音质设置。
 class OnlineSourcesPanel extends StatefulWidget {
@@ -25,6 +26,7 @@ class _OnlineSourcesPanelState extends State<OnlineSourcesPanel> {
   late final TextEditingController _importUrl;
   late String _quality;
   late List<LxSourceEntry> _sources;
+  String _lastLocalPath = '';
 
   final Map<String, String> _testResults = {};
   final Set<String> _testOk = {};
@@ -83,13 +85,8 @@ class _OnlineSourcesPanelState extends State<OnlineSourcesPanel> {
     try {
       final entry = await fetchLxSource(url);
       if (!mounted) return;
-      setState(() {
-        _sources = LxSourceStore.upsert(_sources, entry);
-        _importUrl.clear();
-        _pendingUpdates.remove(entry.id);
-        _updateNotes.remove(entry.id);
-        _updateErrors.remove(entry.id);
-      });
+      _adopt(entry);
+      _importUrl.clear();
       await _persist(done: l10n.importedCount(_sources.length));
     } catch (e) {
       if (!mounted) return;
@@ -97,6 +94,36 @@ class _OnlineSourcesPanelState extends State<OnlineSourcesPanel> {
     } finally {
       if (mounted) setState(() => _importing = false);
     }
+  }
+
+  Future<void> _importLocal() async {
+    final picked = await showScriptPathPicker(context, initialPath: _lastLocalPath);
+    if (picked == null || !mounted) return;
+    _lastLocalPath = picked;
+    setState(() {
+      _importing = true;
+      _error = null;
+    });
+    try {
+      final entry = await readLxSourceFile(picked);
+      if (!mounted) return;
+      _adopt(entry);
+      await _persist(done: l10n.importedCount(_sources.length));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = l10n.importLocalFailed('$e'));
+    } finally {
+      if (mounted) setState(() => _importing = false);
+    }
+  }
+
+  void _adopt(LxSourceEntry entry) {
+    setState(() {
+      _sources = LxSourceStore.upsert(_sources, entry);
+      _pendingUpdates.remove(entry.id);
+      _updateNotes.remove(entry.id);
+      _updateErrors.remove(entry.id);
+    });
   }
 
   /// 单个音源的完整自检：脚本握手 + 走一次真实检索与取链。
@@ -240,8 +267,10 @@ class _OnlineSourcesPanelState extends State<OnlineSourcesPanel> {
     if (tested != null) return tested;
     final error = source.lastError;
     if (error != null && error.trim().isNotEmpty) return l10n.statusError(error);
+    final location =
+        source.local ? l10n.sourceLocalPath(source.url) : source.url;
     final subtitle = source.subtitle;
-    return subtitle.isEmpty ? source.url : '$subtitle · ${source.url}';
+    return subtitle.isEmpty ? location : '$subtitle · $location';
   }
 
   Color _statusColor(LxSourceEntry source) {
@@ -287,6 +316,21 @@ class _OnlineSourcesPanelState extends State<OnlineSourcesPanel> {
                 child: Text(_importing ? t.importing : t.importAction),
               ),
             ]),
+            const SizedBox(height: 4),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: _importing ? null : _importLocal,
+                icon: const Icon(Icons.folder_open_rounded, size: 16),
+                label: Text(t.importLocalScript),
+                style: TextButton.styleFrom(
+                  foregroundColor: C.dim,
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  minimumSize: const Size(0, 30),
+                  textStyle: const TextStyle(fontSize: 11.5),
+                ),
+              ),
+            ),
             if (_feedback != null) ...[
               const SizedBox(height: 6),
               Text(_feedback!, style: TextStyle(fontSize: 11, color: C.acc)),
@@ -454,7 +498,7 @@ class _OnlineSourcesPanelState extends State<OnlineSourcesPanel> {
           else
             _IconBtn(
               icon: Icons.sync_rounded,
-              tooltip: l10n.checkSourceUpdate,
+              tooltip: source.local ? l10n.refreshLocalSource : l10n.checkSourceUpdate,
               onPressed: () => _checkUpdate(source),
             ),
           _IconBtn(

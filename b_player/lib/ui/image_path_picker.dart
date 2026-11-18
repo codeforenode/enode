@@ -9,12 +9,8 @@ import 'directory_picker.dart';
 
 const _imageExts = {'.png', '.jpg', '.jpeg', '.webp', '.bmp', '.gif'};
 const _videoExts = {'.mp4', '.webm', '.mov', '.mkv', '.avi', '.m4v', '.ogv'};
-
-bool isCastImagePath(String path) => _imageExts.contains(p.extension(path.trim()).toLowerCase());
-
-/// 素材选文件：图片和影片共用同一套「自己列目录」的浏览器。
-bool isCastMediaPath(String path, {required bool video}) =>
-    (video ? _videoExts : _imageExts).contains(p.extension(path.trim()).toLowerCase());
+const _scriptExts = {'.js'};
+const _certExts = {'.pem', '.crt', '.cer'};
 
 /// 起始目录：已选过文件就从它所在目录继续，否则退回用户目录。
 String mediaPickerStart(String path) {
@@ -33,29 +29,87 @@ Future<String?> showMediaPathPicker(
 }) =>
     showDialog<String>(
       context: context,
-      builder: (_) => MediaPathPickerDialog(initialPath: initialPath, video: video),
+      builder: (_) => PathPickerDialog(
+        initialPath: initialPath,
+        extensions: video ? _videoExts : _imageExts,
+        title: video ? l10n.screenPickVideo : l10n.screenPickImage,
+        emptyText: video ? l10n.screenNoVideos : l10n.noImages,
+        note: l10n.imagePathNote,
+        pathHint: l10n.pastePathHint,
+        fileIcon: video ? Icons.movie_outlined : Icons.image_outlined,
+      ),
+    );
+
+/// 音源脚本：只列 .js，也允许直接粘路径（Android 上不一定能逐级翻到目标目录）。
+Future<String?> showScriptPathPicker(
+  BuildContext context, {
+  required String initialPath,
+}) =>
+    showDialog<String>(
+      context: context,
+      builder: (_) => PathPickerDialog(
+        initialPath: initialPath,
+        extensions: _scriptExts,
+        title: l10n.pickScriptFile,
+        emptyText: l10n.noScriptFiles,
+        note: l10n.scriptPathNote,
+        pathHint: l10n.scriptPathHint,
+        fileIcon: Icons.code_rounded,
+      ),
+    );
+
+/// Broker 的 CA 证书：内容必须是 PEM 文本。
+Future<String?> showCertificatePathPicker(
+  BuildContext context, {
+  required String initialPath,
+}) =>
+    showDialog<String>(
+      context: context,
+      builder: (_) => PathPickerDialog(
+        initialPath: initialPath,
+        extensions: _certExts,
+        title: l10n.pickCertFile,
+        emptyText: l10n.noCertFiles,
+        note: l10n.certPathNote,
+        pathHint: l10n.certPathHint,
+        fileIcon: Icons.verified_user_outlined,
+      ),
     );
 
 /// 仓库里没有系统文件选择插件（曲库目录同样是手写的浏览器），
 /// 所以这里继续沿用「自己列目录」的做法，只把目标类型列成可点，并允许直接粘路径。
-class MediaPathPickerDialog extends StatefulWidget {
-  const MediaPathPickerDialog({
+class PathPickerDialog extends StatefulWidget {
+  const PathPickerDialog({
     super.key,
     required this.initialPath,
-    required this.video,
+    required this.extensions,
+    required this.title,
+    required this.emptyText,
+    required this.note,
+    required this.pathHint,
+    required this.fileIcon,
     this.listEntries,
   });
 
   final String initialPath;
-  final bool video;
-  final Future<({List<String> dirs, List<String> files})> Function(String dir, bool video)? listEntries;
+  final Set<String> extensions;
+  final String title;
+  final String emptyText;
+  final String note;
+  final String pathHint;
+  final IconData fileIcon;
+  final Future<({List<String> dirs, List<String> files})> Function(String dir, Set<String> extensions)?
+      listEntries;
 
   @override
-  State<MediaPathPickerDialog> createState() => _MediaPathPickerDialogState();
+  State<PathPickerDialog> createState() => _PathPickerDialogState();
 }
 
 /// 列出某目录下的子目录和目标文件（跳过隐藏项）。
-Future<({List<String> dirs, List<String> files})> listMedia(String dir, bool video) async {
+Future<({List<String> dirs, List<String> files})> listFiles(
+  String dir,
+  Set<String> extensions,
+) async {
   final dirs = <String>[];
   final files = <String>[];
   await for (final entity in Directory(dir).list(followLinks: false)) {
@@ -63,7 +117,8 @@ Future<({List<String> dirs, List<String> files})> listMedia(String dir, bool vid
     if (name.isEmpty || name.startsWith('.')) continue;
     if (entity is Directory) {
       dirs.add(p.normalize(entity.path));
-    } else if (entity is File && isCastMediaPath(name, video: video)) {
+    } else if (entity is File &&
+        extensions.contains(p.extension(name).toLowerCase())) {
       files.add(p.normalize(entity.path));
     }
   }
@@ -73,7 +128,7 @@ Future<({List<String> dirs, List<String> files})> listMedia(String dir, bool vid
   return (dirs: dirs, files: files);
 }
 
-class _MediaPathPickerDialogState extends State<MediaPathPickerDialog> {
+class _PathPickerDialogState extends State<PathPickerDialog> {
   late String _path;
   late final TextEditingController _manual;
   ({List<String> dirs, List<String> files}) _entries = (dirs: const [], files: const []);
@@ -81,7 +136,7 @@ class _MediaPathPickerDialogState extends State<MediaPathPickerDialog> {
   String? _error;
 
   Future<({List<String> dirs, List<String> files})> _list(String dir) =>
-      widget.listEntries?.call(dir, widget.video) ?? listMedia(dir, widget.video);
+      widget.listEntries?.call(dir, widget.extensions) ?? listFiles(dir, widget.extensions);
 
   @override
   void initState() {
@@ -128,7 +183,8 @@ class _MediaPathPickerDialogState extends State<MediaPathPickerDialog> {
 
   void _pick(String file) => Navigator.pop(context, p.normalize(file));
 
-  bool get _valid => isCastMediaPath(_manual.text, video: widget.video);
+  bool get _valid =>
+      widget.extensions.contains(p.extension(_manual.text.trim()).toLowerCase());
 
   @override
   Widget build(BuildContext context) {
@@ -136,7 +192,7 @@ class _MediaPathPickerDialogState extends State<MediaPathPickerDialog> {
     final manual = _manual.text.trim();
     return AlertDialog(
       backgroundColor: C.panel,
-      title: Text(widget.video ? t.screenPickVideo : t.screenPickImage, style: kCardTitle),
+      title: Text(widget.title, style: kCardTitle),
       content: SizedBox(
         width: 500,
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -174,7 +230,7 @@ class _MediaPathPickerDialogState extends State<MediaPathPickerDialog> {
               isDense: true,
               filled: true,
               fillColor: C.panel2,
-              hintText: t.pastePathHint,
+              hintText: widget.pathHint,
               hintStyle: TextStyle(fontSize: 12, color: C.faint),
               contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               border: OutlineInputBorder(
@@ -189,7 +245,7 @@ class _MediaPathPickerDialogState extends State<MediaPathPickerDialog> {
           ),
           const SizedBox(height: 6),
           Text(
-            t.imagePathNote,
+            widget.note,
             style: TextStyle(fontSize: 11.5, color: _valid ? C.acc : C.faint),
           ),
         ]),
@@ -220,8 +276,7 @@ class _MediaPathPickerDialogState extends State<MediaPathPickerDialog> {
     ];
     if (items.isEmpty) {
       return Center(
-        child: Text(widget.video ? t.screenNoVideos : t.noImages,
-            style: TextStyle(fontSize: 12.5, color: C.faint)),
+        child: Text(widget.emptyText, style: TextStyle(fontSize: 12.5, color: C.faint)),
       );
     }
     return ListView.separated(
@@ -236,9 +291,7 @@ class _MediaPathPickerDialogState extends State<MediaPathPickerDialog> {
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 9),
             child: Row(children: [
               Icon(
-                isDir
-                    ? Icons.folder_rounded
-                    : (widget.video ? Icons.movie_outlined : Icons.image_outlined),
+                isDir ? Icons.folder_rounded : widget.fileIcon,
                 size: 18,
                 color: isDir ? C.acc : C.dim,
               ),

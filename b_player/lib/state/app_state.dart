@@ -492,7 +492,10 @@ class AppState extends ChangeNotifier {
       checkOnlineSourceUpdate(LxSourceEntry entry) async {
     LxScriptSource? probe;
     try {
-      final latest = await fetchLxSource(entry.url);
+      // 本地脚本按路径重读文件，不联网；同一套哈希比较仍是「有没有新版」。
+      final latest = entry.local
+          ? await readLxSourceFile(entry.url)
+          : await fetchLxSource(entry.url);
       final localHash =
           entry.hash.isNotEmpty ? entry.hash : LxSourceEntry.hashOf(entry.script);
       LxUpdateAlert? alert;

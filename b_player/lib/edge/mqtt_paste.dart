@@ -161,6 +161,8 @@ MqttConfig _build(String host, int port, bool tls, String user, String pass, Mqt
     topicPrefix: base.topicPrefix,
     clientId: base.clientId,
     enabled: true,
+    caCertificate: base.caCertificate,
+    allowBadCertificate: base.allowBadCertificate,
   );
   final error = config.validationError;
   if (error != null) throw FormatException(error);

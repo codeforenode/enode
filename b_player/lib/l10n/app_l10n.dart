@@ -783,6 +783,54 @@ abstract class AppL10n {
   /// **'這個資料夾下沒有圖片檔案（png/jpg/jpeg/webp/bmp/gif）'**
   String get noImages;
 
+  /// No description provided for @pickScriptFile.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'選擇音源腳本'**
+  String get pickScriptFile;
+
+  /// No description provided for @noScriptFiles.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'這個資料夾下沒有 .js 檔'**
+  String get noScriptFiles;
+
+  /// No description provided for @scriptPathNote.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'只列出 .js 檔，也可直接貼上完整路徑。'**
+  String get scriptPathNote;
+
+  /// No description provided for @scriptPathHint.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'也可直接貼路徑，例如 D:\\sources\\lx.js'**
+  String get scriptPathHint;
+
+  /// No description provided for @pickCertFile.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'選擇證書檔案'**
+  String get pickCertFile;
+
+  /// No description provided for @noCertFiles.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'這個資料夾下沒有 .pem / .crt / .cer 檔'**
+  String get noCertFiles;
+
+  /// No description provided for @certPathNote.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'只列出 .pem / .crt / .cer，內容需為 PEM 格式。'**
+  String get certPathNote;
+
+  /// No description provided for @certPathHint.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'也可直接貼路徑，例如 D:\\certs\\broker.pem'**
+  String get certPathHint;
+
   /// No description provided for @mqttIntro.
   ///
   /// In zh_Hant, this message translates to:
@@ -854,6 +902,108 @@ abstract class AppL10n {
   /// In zh_Hant, this message translates to:
   /// **'參數只保存在本機，密碼不會寫進日誌。'**
   String get mqttLocalOnly;
+
+  /// No description provided for @mqttTlsTitle.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'TLS 證書'**
+  String get mqttTlsTitle;
+
+  /// No description provided for @mqttTlsHint.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'Broker 用自簽名或私有 CA 時，匯入它的 PEM 證書；證書域名要與 Broker 位址一致，否則改用跳過校驗。'**
+  String get mqttTlsHint;
+
+  /// No description provided for @mqttCertSave.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'儲存證書'**
+  String get mqttCertSave;
+
+  /// No description provided for @mqttCertPick.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'從檔案選擇…'**
+  String get mqttCertPick;
+
+  /// No description provided for @mqttCertClear.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'清除證書'**
+  String get mqttCertClear;
+
+  /// No description provided for @mqttCertSaved.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'證書已套用，正在重新連線'**
+  String get mqttCertSaved;
+
+  /// No description provided for @mqttCertCleared.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'已清除 CA 證書'**
+  String get mqttCertCleared;
+
+  /// No description provided for @mqttCertNone.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'未匯入額外證書'**
+  String get mqttCertNone;
+
+  /// No description provided for @mqttCertConfigured.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'已匯入 CA 證書'**
+  String get mqttCertConfigured;
+
+  /// No description provided for @mqttCertEmpty.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'先貼上 PEM 證書內容'**
+  String get mqttCertEmpty;
+
+  /// No description provided for @mqttCertPemOnly.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'證書必須是 PEM 格式（-----BEGIN CERTIFICATE-----）'**
+  String get mqttCertPemOnly;
+
+  /// No description provided for @mqttCertInvalid.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'證書無法載入：{error}'**
+  String mqttCertInvalid(String error);
+
+  /// No description provided for @mqttSkipVerify.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'跳過 TLS 證書校驗（不安全）'**
+  String get mqttSkipVerify;
+
+  /// No description provided for @mqttSkipVerifyOn.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'已跳過證書校驗，重新連線中'**
+  String get mqttSkipVerifyOn;
+
+  /// No description provided for @mqttSkipVerifyOff.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'已恢復證書校驗，重新連線中'**
+  String get mqttSkipVerifyOff;
+
+  /// No description provided for @mqttSkipVerifyWarning.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'目前已跳過證書校驗，連線可能被中間人竊聽。'**
+  String get mqttSkipVerifyWarning;
+
+  /// No description provided for @needMqttConfigFirst.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'先識別並套用 Broker 連線資訊'**
+  String get needMqttConfigFirst;
 
   /// No description provided for @mqttApplied.
   ///
@@ -956,6 +1106,12 @@ abstract class AppL10n {
   /// In zh_Hant, this message translates to:
   /// **'連線失敗：{error}'**
   String connectFailed(String error);
+
+  /// No description provided for @connectFailedCert.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'TLS 證書校驗失敗：{error}（可匯入 CA 或臨時跳過校驗）'**
+  String connectFailedCert(String error);
 
   /// No description provided for @connectNotEstablished.
   ///
@@ -1604,6 +1760,42 @@ abstract class AppL10n {
   /// In zh_Hant, this message translates to:
   /// **'匯入失敗：{error}'**
   String importFailedOnline(String error);
+
+  /// No description provided for @importLocalScript.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'選擇本機 JS 檔…'**
+  String get importLocalScript;
+
+  /// No description provided for @importLocalFailed.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'本機檔案匯入失敗：{error}'**
+  String importLocalFailed(String error);
+
+  /// No description provided for @sourceLocalNotJs.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'請選擇 .js 音源腳本檔'**
+  String get sourceLocalNotJs;
+
+  /// No description provided for @sourceLocalMissing.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'本機檔案不存在'**
+  String get sourceLocalMissing;
+
+  /// No description provided for @sourceLocalPath.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'本機 · {path}'**
+  String sourceLocalPath(String path);
+
+  /// No description provided for @refreshLocalSource.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'重新讀取本機檔案'**
+  String get refreshLocalSource;
 
   /// No description provided for @saveFailed.
   ///

@@ -71,6 +71,9 @@ release.bat -Proxy http://127.0.0.1:7890   # GitHub 走代理（省略时自动�
 一致，在 Windows 上跑 analyze/test 并构建便携包/安装包，在 Ubuntu 上构建 APK，
 最后自动发布 Release。Windows 构建会取固定版本的 CEF，通常 20–30 分钟。
 
+Release 说明里的「变更」由 `release.ps1` 取上一个 `release:` 提交到当前 `main` 的提交标题生成，
+并写入 tag 注释。功能改动请保持独立提交；若留在工作区，只会合并成一条「其他改动」。
+
 Windows 包需要能解码 H.264/AAC 的自定义 CEF。工作流从同名仓库的
 `cef-149.0.7827.156` Release 下载 `enode_cef_149.0.7827.156_chrome_win64.tar.bz2`，
 校验归档 SHA256 和最终 `libcef.dll` SHA256；资产缺失或不匹配会直接失败，不会静默退回 stock。

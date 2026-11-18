@@ -19,6 +19,8 @@ class MqttConfig {
     this.topicPrefix = kMqttTopicPrefix,
     this.clientId = '',
     this.enabled = true,
+    this.caCertificate = '',
+    this.allowBadCertificate = false,
   });
 
   final String host;
@@ -29,6 +31,12 @@ class MqttConfig {
   final String topicPrefix;
   final String clientId;
   final bool enabled;
+
+  /// Broker 的 PEM 证书（自签名 / 私有 CA）；非空时与该证书一起校验。
+  final String caCertificate;
+
+  /// 跳过证书校验：自签名且域名不匹配时可用，但链路失去身份保证。
+  final bool allowBadCertificate;
 
   /// 没填地址就是还没配过：此时不连接，状态显示「未配置」。
   bool get configured => host.trim().isNotEmpty;
@@ -52,7 +60,34 @@ class MqttConfig {
         'topicPrefix': topicPrefix,
         'clientId': clientId,
         'enabled': enabled,
+        'caCertificate': caCertificate,
+        'allowBadCertificate': allowBadCertificate,
       };
+
+  MqttConfig copyWith({
+    String? host,
+    int? port,
+    bool? tls,
+    String? username,
+    String? password,
+    String? topicPrefix,
+    String? clientId,
+    bool? enabled,
+    String? caCertificate,
+    bool? allowBadCertificate,
+  }) =>
+      MqttConfig(
+        host: host ?? this.host,
+        port: port ?? this.port,
+        tls: tls ?? this.tls,
+        username: username ?? this.username,
+        password: password ?? this.password,
+        topicPrefix: topicPrefix ?? this.topicPrefix,
+        clientId: clientId ?? this.clientId,
+        enabled: enabled ?? this.enabled,
+        caCertificate: caCertificate ?? this.caCertificate,
+        allowBadCertificate: allowBadCertificate ?? this.allowBadCertificate,
+      );
 
   static MqttConfig? fromJson(Object? raw) {
     if (raw is! Map) return null;
@@ -69,6 +104,8 @@ class MqttConfig {
       topicPrefix: prefix is String && prefix.isNotEmpty ? prefix : kMqttTopicPrefix,
       clientId: raw['clientId'] is String ? raw['clientId'] as String : '',
       enabled: raw['enabled'] != false,
+      caCertificate: raw['caCertificate'] is String ? raw['caCertificate'] as String : '',
+      allowBadCertificate: raw['allowBadCertificate'] == true,
     );
   }
 }

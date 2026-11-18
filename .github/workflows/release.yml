@@ -186,30 +186,55 @@ jobs:
     permissions:
       contents: write
     steps:
+      # 生成变更记录需要完整 tag 与提交历史，不能用默认的浅克隆。
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
 
-      - name: Prepare assets
+      - name: Prepare assets and changelog
         run: |
+          set -euo pipefail
           name="${GITHUB_REF_NAME#v}"
           mv dist/app-release.apk "dist/eNode-${name}-android.apk"
+          repo_url="https://github.com/${GITHUB_REPOSITORY}"
+          # 公开仓只有每次发布压成的快照提交，真实变更记录由 release.ps1 写进 tag 注释。
+          changes=$(git tag -l --format='%(contents:body)' "$GITHUB_REF_NAME")
+          previous=$(git describe --tags --abbrev=0 --match 'v*' "${GITHUB_REF_NAME}^" 2>/dev/null || true)
           {
             echo "# eNode ${name}"
+            echo
+            echo "## 变更"
+            echo
+            if [ -n "$changes" ]; then
+              echo "$changes"
+            else
+              echo "- 本次发布未附带变更记录"
+            fi
+            if [ -n "$previous" ]; then
+              echo
+              echo "**完整对比**: [\`${previous}...${GITHUB_REF_NAME}\`](${repo_url}/compare/${previous}...${GITHUB_REF_NAME})"
+            fi
+            echo
+            echo "## 下载"
             echo
             echo "- Windows installer: eNode-${name}-win-x64-setup.exe"
             echo "- Windows portable: eNode-${name}-win-x64.zip"
             echo "- Android: eNode-${name}-android.apk"
             echo
-            echo "License: [AGPL-3.0](https://github.com/${GITHUB_REPOSITORY}/blob/main/LICENSE)"
+            echo "License: [AGPL-3.0](${repo_url}/blob/main/LICENSE)"
           } > notes.md
 
-      - name: Create release
+      - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --notes-file notes.md
             gh release upload "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --clobber
           else
             gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" \

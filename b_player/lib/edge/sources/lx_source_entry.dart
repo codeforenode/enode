@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
+import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'lx_config.dart';
@@ -68,6 +70,7 @@ class LxSourceMeta {
 ///
 /// `script` 原样保存在本机（与脚本协议一致，不执行任何改写）；
 /// `platforms` 是上一次初始化成功时声明的平台，用于跳过明显不匹配的取链。
+/// 本地导入时 `url` 是脚本文件的绝对路径，`local` 为 true，更新检查改读文件。
 class LxSourceEntry {
   const LxSourceEntry({
     required this.id,
@@ -79,6 +82,7 @@ class LxSourceEntry {
     this.lastError,
     this.updatedAt = 0,
     this.hash = '',
+    this.local = false,
   });
 
   final String id;
@@ -92,6 +96,9 @@ class LxSourceEntry {
 
   /// 下载时的脚本 sha256，用于判断同一地址是否换了内容；旧数据可能为空。
   final String hash;
+
+  /// 从本机文件导入的脚本：不联网，按路径重读判断更新。
+  final bool local;
 
   static String hashOf(String script) =>
       sha256.convert(utf8.encode(script)).toString();
@@ -136,6 +143,7 @@ class LxSourceEntry {
         lastError: clearError ? null : (lastError ?? this.lastError),
         updatedAt: updatedAt ?? this.updatedAt,
         hash: hash ?? this.hash,
+        local: local,
       );
 
   Map<String, Object?> toJson() => {
@@ -148,6 +156,7 @@ class LxSourceEntry {
         'lastError': ?lastError,
         'updatedAt': updatedAt,
         'hash': hash,
+        'local': local,
       };
 
   static LxSourceEntry? fromJson(Object? raw) {
@@ -175,6 +184,7 @@ class LxSourceEntry {
       lastError: raw['lastError'] is String ? raw['lastError'] as String : null,
       updatedAt: (raw['updatedAt'] as num?)?.toInt() ?? 0,
       hash: raw['hash'] is String ? raw['hash'] as String : '',
+      local: raw['local'] == true,
     );
   }
 }
@@ -263,6 +273,35 @@ Future<LxSourceEntry> fetchLxSource(
   } finally {
     if (ownsClient) httpClient.close();
   }
+}
+
+/// 从本机 `.js` 文件导入：文件内容按 UTF-8 读取，仍要求带 `@name` 头部。
+///
+/// 存绝对路径作为身份；重选同一路径视为更新，保留勾选与顺序。
+Future<LxSourceEntry> readLxSourceFile(String path) async {
+  final trimmed = path.trim();
+  if (p.extension(trimmed).toLowerCase() != '.js') {
+    throw FormatException(l10n.sourceLocalNotJs);
+  }
+  final file = File(trimmed);
+  if (!await file.exists()) {
+    throw FormatException(l10n.sourceLocalMissing);
+  }
+  final script = utf8.decode(await file.readAsBytes(), allowMalformed: true);
+  final meta = LxSourceMeta.parse(script);
+  if (meta.name.isEmpty) {
+    throw FormatException(l10n.sourceInvalid);
+  }
+  final normalized = p.normalize(file.absolute.path);
+  return LxSourceEntry(
+    id: LxSourceEntry.idFor(normalized),
+    url: normalized,
+    script: script,
+    meta: meta,
+    local: true,
+    updatedAt: DateTime.now().millisecondsSinceEpoch,
+    hash: LxSourceEntry.hashOf(script),
+  );
 }
 
 /// 给脚本用的 `musicInfo`：字段名沿用 脚本协议各平台的约定。

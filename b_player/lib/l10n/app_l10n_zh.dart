@@ -386,6 +386,30 @@ class AppL10nZh extends AppL10n {
   String get noImages => '這個資料夾下沒有圖片檔案（png/jpg/jpeg/webp/bmp/gif）';
 
   @override
+  String get pickScriptFile => '選擇音源腳本';
+
+  @override
+  String get noScriptFiles => '這個資料夾下沒有 .js 檔';
+
+  @override
+  String get scriptPathNote => '只列出 .js 檔，也可直接貼上完整路徑。';
+
+  @override
+  String get scriptPathHint => '也可直接貼路徑，例如 D:\\sources\\lx.js';
+
+  @override
+  String get pickCertFile => '選擇證書檔案';
+
+  @override
+  String get noCertFiles => '這個資料夾下沒有 .pem / .crt / .cer 檔';
+
+  @override
+  String get certPathNote => '只列出 .pem / .crt / .cer，內容需為 PEM 格式。';
+
+  @override
+  String get certPathHint => '也可直接貼路徑，例如 D:\\certs\\broker.pem';
+
+  @override
   String get mqttIntro => '把連線資訊整段貼進來就行，Broker、連接埠、帳號、密碼會自動識別，不用逐項填寫。';
 
   @override
@@ -423,6 +447,60 @@ class AppL10nZh extends AppL10n {
 
   @override
   String get mqttLocalOnly => '參數只保存在本機，密碼不會寫進日誌。';
+
+  @override
+  String get mqttTlsTitle => 'TLS 證書';
+
+  @override
+  String get mqttTlsHint =>
+      'Broker 用自簽名或私有 CA 時，匯入它的 PEM 證書；證書域名要與 Broker 位址一致，否則改用跳過校驗。';
+
+  @override
+  String get mqttCertSave => '儲存證書';
+
+  @override
+  String get mqttCertPick => '從檔案選擇…';
+
+  @override
+  String get mqttCertClear => '清除證書';
+
+  @override
+  String get mqttCertSaved => '證書已套用，正在重新連線';
+
+  @override
+  String get mqttCertCleared => '已清除 CA 證書';
+
+  @override
+  String get mqttCertNone => '未匯入額外證書';
+
+  @override
+  String get mqttCertConfigured => '已匯入 CA 證書';
+
+  @override
+  String get mqttCertEmpty => '先貼上 PEM 證書內容';
+
+  @override
+  String get mqttCertPemOnly => '證書必須是 PEM 格式（-----BEGIN CERTIFICATE-----）';
+
+  @override
+  String mqttCertInvalid(String error) {
+    return '證書無法載入：$error';
+  }
+
+  @override
+  String get mqttSkipVerify => '跳過 TLS 證書校驗（不安全）';
+
+  @override
+  String get mqttSkipVerifyOn => '已跳過證書校驗，重新連線中';
+
+  @override
+  String get mqttSkipVerifyOff => '已恢復證書校驗，重新連線中';
+
+  @override
+  String get mqttSkipVerifyWarning => '目前已跳過證書校驗，連線可能被中間人竊聽。';
+
+  @override
+  String get needMqttConfigFirst => '先識別並套用 Broker 連線資訊';
 
   @override
   String mqttApplied(String host, int port) {
@@ -482,6 +560,11 @@ class AppL10nZh extends AppL10n {
   @override
   String connectFailed(String error) {
     return '連線失敗：$error';
+  }
+
+  @override
+  String connectFailedCert(String error) {
+    return 'TLS 證書校驗失敗：$error（可匯入 CA 或臨時跳過校驗）';
   }
 
   @override
@@ -871,6 +954,28 @@ class AppL10nZh extends AppL10n {
   String importFailedOnline(String error) {
     return '匯入失敗：$error';
   }
+
+  @override
+  String get importLocalScript => '選擇本機 JS 檔…';
+
+  @override
+  String importLocalFailed(String error) {
+    return '本機檔案匯入失敗：$error';
+  }
+
+  @override
+  String get sourceLocalNotJs => '請選擇 .js 音源腳本檔';
+
+  @override
+  String get sourceLocalMissing => '本機檔案不存在';
+
+  @override
+  String sourceLocalPath(String path) {
+    return '本機 · $path';
+  }
+
+  @override
+  String get refreshLocalSource => '重新讀取本機檔案';
 
   @override
   String saveFailed(String error) {
@@ -2388,6 +2493,30 @@ class AppL10nZhHans extends AppL10nZh {
   String get noImages => '这个文件夹下没有图片文件（png/jpg/jpeg/webp/bmp/gif）';
 
   @override
+  String get pickScriptFile => '选择音源脚本';
+
+  @override
+  String get noScriptFiles => '这个文件夹下没有 .js 文件';
+
+  @override
+  String get scriptPathNote => '只列出 .js 文件，也可直接粘贴完整路径。';
+
+  @override
+  String get scriptPathHint => '也可直接粘贴路径，例如 D:\\sources\\lx.js';
+
+  @override
+  String get pickCertFile => '选择证书文件';
+
+  @override
+  String get noCertFiles => '这个文件夹下没有 .pem / .crt / .cer 文件';
+
+  @override
+  String get certPathNote => '只列出 .pem / .crt / .cer，内容需为 PEM 格式。';
+
+  @override
+  String get certPathHint => '也可直接粘贴路径，例如 D:\\certs\\broker.pem';
+
+  @override
   String get mqttIntro => '把连接信息整段粘贴进来就行，Broker、端口、账号、密码会自动识别，不用逐项填写。';
 
   @override
@@ -2424,6 +2553,60 @@ class AppL10nZhHans extends AppL10nZh {
 
   @override
   String get mqttLocalOnly => '参数只保存在本机，密码不会写进日志。';
+
+  @override
+  String get mqttTlsTitle => 'TLS 证书';
+
+  @override
+  String get mqttTlsHint =>
+      'Broker 用自签名或私有 CA 时，导入它的 PEM 证书；证书域名要与 Broker 地址一致，否则改用跳过校验。';
+
+  @override
+  String get mqttCertSave => '保存证书';
+
+  @override
+  String get mqttCertPick => '从文件选择…';
+
+  @override
+  String get mqttCertClear => '清除证书';
+
+  @override
+  String get mqttCertSaved => '证书已应用，正在重新连接';
+
+  @override
+  String get mqttCertCleared => '已清除 CA 证书';
+
+  @override
+  String get mqttCertNone => '未导入额外证书';
+
+  @override
+  String get mqttCertConfigured => '已导入 CA 证书';
+
+  @override
+  String get mqttCertEmpty => '先粘贴 PEM 证书内容';
+
+  @override
+  String get mqttCertPemOnly => '证书必须是 PEM 格式（-----BEGIN CERTIFICATE-----）';
+
+  @override
+  String mqttCertInvalid(String error) {
+    return '证书无法加载：$error';
+  }
+
+  @override
+  String get mqttSkipVerify => '跳过 TLS 证书校验（不安全）';
+
+  @override
+  String get mqttSkipVerifyOn => '已跳过证书校验，重新连接中';
+
+  @override
+  String get mqttSkipVerifyOff => '已恢复证书校验，重新连接中';
+
+  @override
+  String get mqttSkipVerifyWarning => '目前已跳过证书校验，连接可能被中间人窃听。';
+
+  @override
+  String get needMqttConfigFirst => '先识别并应用 Broker 连接信息';
 
   @override
   String mqttApplied(String host, int port) {
@@ -2483,6 +2666,11 @@ class AppL10nZhHans extends AppL10nZh {
   @override
   String connectFailed(String error) {
     return '连接失败：$error';
+  }
+
+  @override
+  String connectFailedCert(String error) {
+    return 'TLS 证书校验失败：$error（可导入 CA 或临时跳过校验）';
   }
 
   @override
@@ -2872,6 +3060,28 @@ class AppL10nZhHans extends AppL10nZh {
   String importFailedOnline(String error) {
     return '导入失败：$error';
   }
+
+  @override
+  String get importLocalScript => '选择本地 JS 文件…';
+
+  @override
+  String importLocalFailed(String error) {
+    return '本地文件导入失败：$error';
+  }
+
+  @override
+  String get sourceLocalNotJs => '请选择 .js 音源脚本文件';
+
+  @override
+  String get sourceLocalMissing => '本地文件不存在';
+
+  @override
+  String sourceLocalPath(String path) {
+    return '本地 · $path';
+  }
+
+  @override
+  String get refreshLocalSource => '重新读取本地文件';
 
   @override
   String saveFailed(String error) {
@@ -4389,6 +4599,30 @@ class AppL10nZhHant extends AppL10nZh {
   String get noImages => '這個資料夾下沒有圖片檔案（png/jpg/jpeg/webp/bmp/gif）';
 
   @override
+  String get pickScriptFile => '選擇音源腳本';
+
+  @override
+  String get noScriptFiles => '這個資料夾下沒有 .js 檔';
+
+  @override
+  String get scriptPathNote => '只列出 .js 檔，也可直接貼上完整路徑。';
+
+  @override
+  String get scriptPathHint => '也可直接貼路徑，例如 D:\\sources\\lx.js';
+
+  @override
+  String get pickCertFile => '選擇證書檔案';
+
+  @override
+  String get noCertFiles => '這個資料夾下沒有 .pem / .crt / .cer 檔';
+
+  @override
+  String get certPathNote => '只列出 .pem / .crt / .cer，內容需為 PEM 格式。';
+
+  @override
+  String get certPathHint => '也可直接貼路徑，例如 D:\\certs\\broker.pem';
+
+  @override
   String get mqttIntro => '把連線資訊整段貼進來就行，Broker、連接埠、帳號、密碼會自動識別，不用逐項填寫。';
 
   @override
@@ -4426,6 +4660,60 @@ class AppL10nZhHant extends AppL10nZh {
 
   @override
   String get mqttLocalOnly => '參數只保存在本機，密碼不會寫進日誌。';
+
+  @override
+  String get mqttTlsTitle => 'TLS 證書';
+
+  @override
+  String get mqttTlsHint =>
+      'Broker 用自簽名或私有 CA 時，匯入它的 PEM 證書；證書域名要與 Broker 位址一致，否則改用跳過校驗。';
+
+  @override
+  String get mqttCertSave => '儲存證書';
+
+  @override
+  String get mqttCertPick => '從檔案選擇…';
+
+  @override
+  String get mqttCertClear => '清除證書';
+
+  @override
+  String get mqttCertSaved => '證書已套用，正在重新連線';
+
+  @override
+  String get mqttCertCleared => '已清除 CA 證書';
+
+  @override
+  String get mqttCertNone => '未匯入額外證書';
+
+  @override
+  String get mqttCertConfigured => '已匯入 CA 證書';
+
+  @override
+  String get mqttCertEmpty => '先貼上 PEM 證書內容';
+
+  @override
+  String get mqttCertPemOnly => '證書必須是 PEM 格式（-----BEGIN CERTIFICATE-----）';
+
+  @override
+  String mqttCertInvalid(String error) {
+    return '證書無法載入：$error';
+  }
+
+  @override
+  String get mqttSkipVerify => '跳過 TLS 證書校驗（不安全）';
+
+  @override
+  String get mqttSkipVerifyOn => '已跳過證書校驗，重新連線中';
+
+  @override
+  String get mqttSkipVerifyOff => '已恢復證書校驗，重新連線中';
+
+  @override
+  String get mqttSkipVerifyWarning => '目前已跳過證書校驗，連線可能被中間人竊聽。';
+
+  @override
+  String get needMqttConfigFirst => '先識別並套用 Broker 連線資訊';
 
   @override
   String mqttApplied(String host, int port) {
@@ -4485,6 +4773,11 @@ class AppL10nZhHant extends AppL10nZh {
   @override
   String connectFailed(String error) {
     return '連線失敗：$error';
+  }
+
+  @override
+  String connectFailedCert(String error) {
+    return 'TLS 證書校驗失敗：$error（可匯入 CA 或臨時跳過校驗）';
   }
 
   @override
@@ -4874,6 +5167,28 @@ class AppL10nZhHant extends AppL10nZh {
   String importFailedOnline(String error) {
     return '匯入失敗：$error';
   }
+
+  @override
+  String get importLocalScript => '選擇本機 JS 檔…';
+
+  @override
+  String importLocalFailed(String error) {
+    return '本機檔案匯入失敗：$error';
+  }
+
+  @override
+  String get sourceLocalNotJs => '請選擇 .js 音源腳本檔';
+
+  @override
+  String get sourceLocalMissing => '本機檔案不存在';
+
+  @override
+  String sourceLocalPath(String path) {
+    return '本機 · $path';
+  }
+
+  @override
+  String get refreshLocalSource => '重新讀取本機檔案';
 
   @override
   String saveFailed(String error) {

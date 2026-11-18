@@ -153,6 +153,7 @@ void main() {
     expect(find.text(l10n.mqttClear), findsOneWidget);
     expect(find.text(l10n.mqttIntroUnconfigured), findsOneWidget);
     expect(find.text(l10n.mqttNotConfigured), findsWidgets); // 面板状态 + 弹层背后的顶栏
+    expect(find.text(l10n.mqttTlsTitle), findsNothing, reason: '未启用 TLS 时不显示证书段');
     await tester.tap(find.text(l10n.tabDisplay));
     await tester.pump();
 
@@ -184,6 +185,48 @@ void main() {
     expect(find.text(l10n.settingsTitle), findsNothing);
     final scaler = MediaQuery.textScalerOf(tester.element(find.text(l10n.nowPlaying)));
     expect(scaler.scale(10), closeTo(13, 0.01));
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('广播 TLS：跳过证书校验会立即落盘', (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({});
+    await tester.binding.setSurfaceSize(const Size(412, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(const BPlayerApp(
+      mqtt: MqttConfig(
+        host: 'broker.example.com',
+        port: 8883,
+        tls: true,
+        enabled: false,
+      ),
+    ));
+
+    await tester.tap(find.byIcon(Icons.settings_rounded));
+    await tester.pump();
+    await tester.tap(find.text(l10n.tabBroadcast));
+    await tester.pump();
+
+    final checkbox = find.byType(Checkbox);
+    expect(checkbox, findsOneWidget);
+    expect(find.text(l10n.mqttTlsTitle), findsOneWidget);
+    expect(find.text(l10n.mqttCertSave), findsOneWidget);
+    expect(find.text(l10n.mqttCertPick), findsOneWidget);
+    expect(find.text(l10n.mqttCertNone), findsOneWidget);
+    expect(find.text(l10n.mqttSkipVerify), findsOneWidget);
+    await tester.ensureVisible(checkbox);
+    await tester.pump();
+    await tester.tap(checkbox);
+    await tester.pump();
+
+    final prefs = await SharedPreferences.getInstance();
+    final saved = MqttConfig.fromJson(
+        jsonDecode(prefs.getString('mqtt.config.v1') ?? '{}'));
+    expect(saved, isNotNull);
+    expect(saved!.host, 'broker.example.com');
+    expect(saved.tls, isTrue);
+    expect(saved.allowBadCertificate, isTrue);
+    expect(find.text(l10n.mqttSkipVerifyWarning), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
   });
@@ -293,6 +336,7 @@ void main() {
     // 解锁后直接落在「音源」段
     expect(find.text(l10n.tabSources), findsOneWidget);
     expect(find.text(l10n.onlineSourcesTitle), findsOneWidget);
+    expect(find.text(l10n.importLocalScript), findsOneWidget);
     expect(find.text('保存'), findsNothing, reason: '改动即时生效，不再需要单独保存');
 
     await tester.ensureVisible(find.text('flac'));

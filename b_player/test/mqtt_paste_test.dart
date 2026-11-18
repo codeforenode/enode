@@ -12,6 +12,8 @@ const _base = MqttConfig(
   topicPrefix: 'bp/v1',
   clientId: 'cid-1',
   enabled: true,
+  caCertificate: '-----BEGIN CERTIFICATE-----\nOLD\n-----END CERTIFICATE-----',
+  allowBadCertificate: true,
 );
 
 void main() {
@@ -35,6 +37,9 @@ void main() {
       final c = parseMqttPaste('mqtts://user:secret@host.example.com', base: _base);
       expect(c.port, 8883);
       expect(c.tls, isTrue);
+      // 证书选项不属于连接块，识别新地址时不能丢。
+      expect(c.caCertificate, _base.caCertificate);
+      expect(c.allowBadCertificate, isTrue);
     });
 
     test('地址:端口 也认', () {
@@ -149,6 +154,8 @@ void main() {
         password: "p#ss'1",
         topicPrefix: 'bp/v1',
         clientId: 'cid-2',
+        caCertificate: '-----BEGIN CERTIFICATE-----\nCA\n-----END CERTIFICATE-----',
+        allowBadCertificate: true,
       );
       await MqttConfigStore.save(saved);
       final loaded = await MqttConfigStore.load();
@@ -158,6 +165,8 @@ void main() {
       expect(loaded.tls, isTrue);
       expect(loaded.username, 'venue');
       expect(loaded.password, "p#ss'1");
+      expect(loaded.caCertificate, saved.caCertificate);
+      expect(loaded.allowBadCertificate, isTrue);
 
       await MqttConfigStore.clear();
       expect(await MqttConfigStore.load(), isNull);
