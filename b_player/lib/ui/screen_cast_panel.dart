@@ -311,14 +311,6 @@ class _ScreenCastPanelState extends State<ScreenCastPanel> {
 
   int get _durationMs => _live ? (widget.state.nowPlaying?.durationMs ?? 0) : _demoDuration;
 
-  String _lyricMeta(AppL10n t, CastStyle style) {
-    final np = widget.state.nowPlaying;
-    return [
-      if (style.showTitle) _live ? (np?.title ?? '') : t.castDemoTitle,
-      if (style.showArtist) _live ? (np?.artist ?? '') : t.castDemoArtist,
-    ].where((s) => s.trim().isNotEmpty).join(' · ');
-  }
-
   // ---------------- 素材操作 ----------------
 
   String _typeLabel(AppL10n t, CastMaterialType type) => switch (type) {
@@ -1358,14 +1350,12 @@ class _ScreenCastPanelState extends State<ScreenCastPanel> {
       case CastMaterialType.lyric:
         final lines = _lyricSource;
         final style = m.style;
-        final pos = _positionMs + style.offsetMs;
         return CastLyricLayer(
           style: style,
           box: Size(stage.width * p.width, stage.height * p.height),
           scale: scale,
           lines: lines,
-          index: lyricIndexAt(lines, math.max(0, pos)),
-          meta: _lyricMeta(t, style),
+          index: lyricIndexAt(lines, math.max(0, _positionMs)),
           positionMs: _positionMs,
           durationMs: _durationMs,
           placeholder: widget.state.nowPlaying != null ? t.castNoLyrics : '',
@@ -2144,30 +2134,6 @@ class _ScreenCastPanelState extends State<ScreenCastPanel> {
         }),
       ]),
       _section(title: t.castExtras, trailing: t.screenOverlayAbove, children: [
-        Wrap(spacing: 4, runSpacing: 4, children: [
-          for (final (on, label, change) in [
-            (style.showTitle, t.castShowTitle, (bool v) => set((s) => s.copyWith(showTitle: v))),
-            (style.showArtist, t.castShowArtist, (bool v) => set((s) => s.copyWith(showArtist: v))),
-          ])
-            Choice(
-              compact: true,
-              fill: C.panel2,
-              label: label,
-              on: on,
-              onTap: () => change(!on),
-            ),
-        ]),
-        const SizedBox(height: 7),
-        _row(
-          t.screenTimeOffset,
-          SizedBox(
-            width: 82,
-            child: _textField('offset', '${style.offsetMs}', (v) {
-              final n = int.tryParse(v.trim());
-              if (n != null) set((s) => s.copyWith(offsetMs: n.clamp(-5000, 5000)));
-            }, keyboard: TextInputType.number),
-          ),
-        ),
         _note(Icons.info_outline_rounded, t.screenLyricNoBgNote, highlight: true),
       ]),
     ];

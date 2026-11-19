@@ -202,21 +202,11 @@ class CastCanvas {
 
   Future<void> pushLyric(
     List<LyricLine> lines, {
-    String? title,
-    String? artist,
-    String? seat,
     int durationMs = 0,
     bool hasTrack = false,
     bool idle = false,
   }) async {
-    _lyric = castWebLyric(
-        lines,
-        title: title,
-        artist: artist,
-        seat: seat,
-        durationMs: durationMs,
-        hasTrack: hasTrack,
-        idle: idle);
+    _lyric = castWebLyric(lines, durationMs: durationMs, hasTrack: hasTrack, idle: idle);
     await _push(_lyric!);
   }
 

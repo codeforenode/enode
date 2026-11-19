@@ -62,7 +62,6 @@ void main() {
           imagePath: r'D:\pic\bg.jpg',
           align: CastAlign.right,
           vertical: 80,
-          offsetMs: -350,
         ),
       );
       const settings = CastSettings(

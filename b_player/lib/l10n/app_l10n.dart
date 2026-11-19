@@ -1263,6 +1263,108 @@ abstract class AppL10n {
   /// **'暫無歌詞'**
   String get castNoLyrics;
 
+  /// No description provided for @lyricShareTitle.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'區域網路歌詞頁'**
+  String get lyricShareTitle;
+
+  /// No description provided for @lyricShareIntro.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'開啟後，同一網路裡的手機、平板或另一台電腦用瀏覽器開啟下面的網址，就能看到目前曲目的歌詞。'**
+  String get lyricShareIntro;
+
+  /// No description provided for @lyricShareEnable.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'啟用'**
+  String get lyricShareEnable;
+
+  /// No description provided for @lyricShareDisable.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'停用'**
+  String get lyricShareDisable;
+
+  /// No description provided for @lyricSharePort.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'連接埠'**
+  String get lyricSharePort;
+
+  /// No description provided for @lyricShareApply.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'套用'**
+  String get lyricShareApply;
+
+  /// No description provided for @lyricShareCopy.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'複製網址'**
+  String get lyricShareCopy;
+
+  /// No description provided for @lyricShareCopied.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'已複製'**
+  String get lyricShareCopied;
+
+  /// No description provided for @lyricShareOpenHint.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'任何裝置開啟即可查看，不需要密碼；畫面背景透明，可直接疊加到直播或錄屏軟體。'**
+  String get lyricShareOpenHint;
+
+  /// No description provided for @lyricShareSecurity.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'同一網路內的任何裝置都能看到目前歌詞；只暴露正在播放的這一首，不含曲庫。'**
+  String get lyricShareSecurity;
+
+  /// No description provided for @lyricShareHint.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'手機需與電腦在同一區域網路，Windows 防火牆要放行這個連接埠。'**
+  String get lyricShareHint;
+
+  /// No description provided for @lyricShareOn.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'執行中'**
+  String get lyricShareOn;
+
+  /// No description provided for @lyricShareOff.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'已停止'**
+  String get lyricShareOff;
+
+  /// No description provided for @lyricShareEmpty.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'尚未啟用。'**
+  String get lyricShareEmpty;
+
+  /// No description provided for @lyricShareIdle.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'暫無播放內容'**
+  String get lyricShareIdle;
+
+  /// No description provided for @lyricSharePortInvalid.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'連接埠需在 1024–65535 之間'**
+  String get lyricSharePortInvalid;
+
+  /// No description provided for @lyricShareUnavailable.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'服務未能啟動：{reason}'**
+  String lyricShareUnavailable(String reason);
+
   /// No description provided for @onlineLibrary.
   ///
   /// In zh_Hant, this message translates to:
@@ -2506,18 +2608,6 @@ abstract class AppL10n {
   /// **'附加資訊'**
   String get castExtras;
 
-  /// No description provided for @castShowTitle.
-  ///
-  /// In zh_Hant, this message translates to:
-  /// **'歌名'**
-  String get castShowTitle;
-
-  /// No description provided for @castShowArtist.
-  ///
-  /// In zh_Hant, this message translates to:
-  /// **'歌手'**
-  String get castShowArtist;
-
   /// No description provided for @castShowSeat.
   ///
   /// In zh_Hant, this message translates to:
@@ -2583,18 +2673,6 @@ abstract class AppL10n {
   /// In zh_Hant, this message translates to:
   /// **'#RRGGBB 或 #AARRGGBB；A 是文字自身的透明度。'**
   String get castColorHint;
-
-  /// No description provided for @castDemoTitle.
-  ///
-  /// In zh_Hant, this message translates to:
-  /// **'晚風不歇'**
-  String get castDemoTitle;
-
-  /// No description provided for @castDemoArtist.
-  ///
-  /// In zh_Hant, this message translates to:
-  /// **'demo 歌手'**
-  String get castDemoArtist;
 
   /// No description provided for @castFontYaHei.
   ///
@@ -3057,12 +3135,6 @@ abstract class AppL10n {
   /// In zh_Hant, this message translates to:
   /// **'{count} 行'**
   String screenLineCount(int count);
-
-  /// No description provided for @screenTimeOffset.
-  ///
-  /// In zh_Hant, this message translates to:
-  /// **'時間偏移'**
-  String get screenTimeOffset;
 
   /// No description provided for @screenLyricNoBgNote.
   ///

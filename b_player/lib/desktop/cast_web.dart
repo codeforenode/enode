@@ -129,10 +129,7 @@ Map<String, Object?> castWebStyle(CastStyle s) => {
       'imageFit': s.imageFit,
       'align': s.align.name,
       'vertical': s.vertical,
-      'showTitle': s.showTitle,
-      'showArtist': s.showArtist,
       'showSeat': s.showSeat,
-      'offsetMs': s.offsetMs,
     };
 
 Map<String, Object?> castWebLyric(

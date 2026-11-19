@@ -81,7 +81,7 @@ void main() {
   group('跨 isolate 载荷', () {
     test('建窗 payload 带标记、主窗 id 和这台屏的几何', () {
       final t = _on('second', 'b', mode: CastMode.region, region: CastRegion.bottomStrip);
-      final style = CastStyle.defaults.copyWith(fontSize: 64, offsetMs: 1200);
+      final style = CastStyle.defaults.copyWith(fontSize: 64);
       final p = castWindowPayload(mainId: 'win-1', monitor: _second, target: t, style: style);
       expect(p['tag'], castWindowTag);
       expect(p['main'], 'win-1');
@@ -131,17 +131,17 @@ void main() {
         ],
         [4000, '第二句', 8000],
       ]);
-      // 没带桌号就不下发 seat，投放页的 trim() 判断会自动跳过这一段；
-      // 不要再兜成「本机」这种标签，那会把缺失当成一种身份。
-      expect(payload['seat'], isNull);
+      // 歌名/歌手/座位号已从投放链路整体下线：整包只带进度所需的字段。
+      expect(payload.containsKey('seat'), isFalse);
+      expect(payload.containsKey('title'), isFalse);
+      expect(payload.containsKey('artist'), isFalse);
       expect(payload['durationMs'], 61000);
       expect(payload['hasTrack'], true);
       final fromSeat = castLyricPush(
         lines: const [],
         nowPlaying: QueueItem(trackKey: 'k', title: 't', artist: 'a', durationMs: 0, seat: 'A-07'),
       );
-      expect(fromSeat['seat'], 'A-07');
-      expect(castLyricPush(lines: const [])['title'], isNull);
+      expect(fromSeat.containsKey('seat'), isFalse);
       expect(castLyricPush(lines: const [])['hasTrack'], false);
     });
 
@@ -162,7 +162,7 @@ void main() {
           fullscreen: false,
         );
 
-    test('歌词进来就能算行号，偏移跟着同一份 style 走', () async {
+    test('歌词进来就能算行号，style 换样式不动行号', () async {
       final bounds = const Rect.fromLTWH(1920, 0, 1600, 900);
       final model = modelAt(bounds);
       addTearDown(model.dispose);
@@ -172,28 +172,24 @@ void main() {
           [4000, '第二句'],
           [8000, '第三句'],
         ],
-        'title': '甜蜜蜜',
-        'artist': '邓丽君',
-        'seat': 'A-07',
         'durationMs': 61000,
       });
       expect(model.lines.length, 3);
-      expect(model.seat, 'A-07');
 
       await model.handle('tick', {'positionMs': 5000, 'wallMs': 1000, 'playing': false});
       expect(model.positionMs, 5000);
       expect(model.lyricIndex, 1);
 
-      // 负偏移把词往前压：同一个位置退回上一句。bounds 没变就不该碰窗口。
-      final style = CastStyle.defaults.copyWith(offsetMs: -2000);
+      // 换样式不影响行号；bounds 没变就不该碰窗口。
+      final style = CastStyle.defaults.copyWith(fontSize: 72);
       await model.handle('style', {
         'bounds': _box(bounds),
         'design': [1600, 900],
         'fullscreen': false,
         'style': jsonDecode(jsonEncode(style.toJson())),
       });
-      expect(model.style.offsetMs, -2000);
-      expect(model.lyricIndex, 0);
+      expect(model.style.fontSize, 72);
+      expect(model.lyricIndex, 1);
       expect(model.design, const Size(1600, 900));
     });
 

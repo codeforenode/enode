@@ -177,8 +177,8 @@ void main() {
     expect(find.text(l10n.screenLyricNoBgNote), findsOneWidget);
     expect(find.text(l10n.castShowSeat), findsNothing, reason: '歌词附加属性里不该再有座位号');
     expect(find.text(l10n.castBgGradient), findsNothing, reason: '背景靠叠加别的素材，歌词不再自带背景');
-    expect(find.text(l10n.castShowTitle), findsOneWidget);
-    expect(find.text(l10n.castShowArtist), findsOneWidget);
+    expect(find.text('歌名'), findsNothing, reason: '歌词附加属性里不该再有歌名');
+    expect(find.text('歌手'), findsNothing, reason: '歌词附加属性里不该再有歌手');
     expect(find.text(l10n.castFontSize), findsOneWidget);
     expect(find.text(l10n.castLineGap), findsOneWidget);
     expect(find.text(l10n.castTextWidth), findsOneWidget);

@@ -21,7 +21,6 @@ void main() {
       background: CastBackground.gradient,
       align: CastAlign.right,
       vertical: 62,
-      offsetMs: -180,
     ));
     expect(map['lines'], 3);
     expect(map['fontFamily'], 'SimHei');
@@ -35,7 +34,6 @@ void main() {
     expect(map['background'], 'gradient');
     expect(map['align'], 'right');
     expect(map['vertical'], 62);
-    expect(map['offsetMs'], -180);
   });
 
   test('背景图换成页面能读的 file:// 地址，空路径就是空串', () {

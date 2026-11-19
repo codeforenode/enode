@@ -79,10 +79,6 @@ Map<String, Object?> castLyricPush({
               ],
           ],
       ],
-      'title': nowPlaying?.title,
-      'artist': nowPlaying?.artist,
-      // 没带桌号就给 null，投放页的 trim() 判断会自动跳过这一段。
-      'seat': nowPlaying?.seat,
       'durationMs': nowPlaying?.durationMs ?? 0,
       'hasTrack': nowPlaying != null,
       // 闲时引导语的显隐开关：没有曲目、队列也空时才是 true。
@@ -382,9 +378,6 @@ class CastWindows {
       if (useCanvas) {
         await canvas.pushLyric(
           lines,
-          title: np?.title,
-          artist: np?.artist,
-          seat: np?.seat,
           durationMs: np?.durationMs ?? 0,
           hasTrack: np != null,
           idle: idle,

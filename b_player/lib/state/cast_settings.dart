@@ -241,10 +241,7 @@ class CastStyle {
     this.imageFit = true,
     this.align = CastAlign.center,
     this.vertical = 50,
-    this.showTitle = true,
-    this.showArtist = true,
     this.showSeat = false,
-    this.offsetMs = 0,
   });
 
   /// 同时显示几行歌词（当前行 + 前后各取）。
@@ -283,12 +280,7 @@ class CastStyle {
 
   /// 歌词块在投放区里的垂直位置（0=贴顶，100=贴底）。
   final double vertical;
-  final bool showTitle;
-  final bool showArtist;
   final bool showSeat;
-
-  /// 投放全局偏移（毫秒），叠加在「本曲偏移」之上，正值让歌词往后推。
-  final int offsetMs;
 
   static const defaults = CastStyle();
 
@@ -320,10 +312,7 @@ class CastStyle {
     bool? imageFit,
     CastAlign? align,
     double? vertical,
-    bool? showTitle,
-    bool? showArtist,
     bool? showSeat,
-    int? offsetMs,
   }) =>
       CastStyle(
         lines: lines ?? this.lines,
@@ -346,10 +335,7 @@ class CastStyle {
         imageFit: imageFit ?? this.imageFit,
         align: align ?? this.align,
         vertical: vertical ?? this.vertical,
-        showTitle: showTitle ?? this.showTitle,
-        showArtist: showArtist ?? this.showArtist,
         showSeat: showSeat ?? this.showSeat,
-        offsetMs: offsetMs ?? this.offsetMs,
       );
 
   Map<String, dynamic> toJson() => {
@@ -373,10 +359,7 @@ class CastStyle {
         'fit': imageFit,
         'align': align.name,
         'vpos': vertical,
-        'title': showTitle,
-        'artist': showArtist,
         'seat': showSeat,
-        'offset': offsetMs,
       };
 
   static CastStyle fromJson(Map raw) => CastStyle(
@@ -400,10 +383,7 @@ class CastStyle {
         imageFit: raw['fit'] != false,
         align: _enumByName(CastAlign.values, raw['align'], CastAlign.center),
         vertical: ((raw['vpos'] as num?)?.toDouble() ?? 50).clamp(0.0, 100.0),
-        showTitle: raw['title'] != false,
-        showArtist: raw['artist'] != false,
         showSeat: raw['seat'] == true,
-        offsetMs: (raw['offset'] as num?)?.toInt() ?? 0,
       );
 
   // 样式字段有二十来个，逐个写 == 容易漏；toJson 里全是原始值，直接比映射最稳。
@@ -834,9 +814,6 @@ class CastSettings {
   /// 兼容旧调用：取第一份歌词素材的样式（旧版全局样式 / 一屏一窗回退）。
   CastStyle get style =>
       (_firstOrNull(materials.where((m) => m.type == CastMaterialType.lyric)) ?? CastMaterial.defaultLyric).style;
-
-  /// 歌词整体偏移：C端 与墙上字幕必须按同一个量挪。
-  int get lyricOffsetMs => style.offsetMs;
 
   CastMaterialsView get materialsView => CastMaterialsView(materials);
 

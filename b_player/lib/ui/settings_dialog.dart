@@ -15,6 +15,7 @@ import '../state/app_state.dart';
 import '../state/app_update.dart';
 import '../theme.dart';
 import 'form_bits.dart';
+import 'lyric_share_panel.dart';
 import 'mqtt_panel.dart';
 import 'online_settings.dart';
 import 'screen_cast_panel.dart';
@@ -222,7 +223,14 @@ class _SettingsPageState extends State<_SettingsPage> {
         _Tab.broadcast => _scrolled(
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 720),
-              child: MqttPanel(state: widget.state),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  MqttPanel(state: widget.state),
+                  // 局域网歌词页与 MQTT 同属「对外提供内容」，放在同一页。
+                  if (Platform.isWindows) LyricSharePanel(state: widget.state),
+                ],
+              ),
             ),
           ),
         _Tab.audio => _scrolled(ConstrainedBox(

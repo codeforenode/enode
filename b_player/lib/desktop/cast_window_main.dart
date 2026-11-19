@@ -165,9 +165,6 @@ class CastWindowModel extends ChangeNotifier {
   Rect bounds;
   bool fullscreen;
   List<LyricLine> lines = const [];
-  String? title;
-  String? artist;
-  String? seat;
   int durationMs = 0;
   bool hasTrack = false;
 
@@ -191,7 +188,7 @@ class CastWindowModel extends ChangeNotifier {
       ? math.max(0, _anchorPos + DateTime.now().millisecondsSinceEpoch - _anchorWall)
       : _anchorPos;
 
-  int get lyricIndex => lyricIndexAt(lines, math.max(0, positionMs + style.offsetMs));
+  int get lyricIndex => lyricIndexAt(lines, math.max(0, positionMs));
 
   Future<void> handle(String method, Object? args) async {
     final a = args is Map ? Map<String, Object?>.from(args.cast<Object?, Object?>()) : const <String, Object?>{};
@@ -212,9 +209,6 @@ class CastWindowModel extends ChangeNotifier {
         styleRev++;
       case 'lyric':
         lines = _lines(a['lines']);
-        title = a['title'] as String?;
-        artist = a['artist'] as String?;
-        seat = a['seat'] as String?;
         durationMs = (a['durationMs'] as num?)?.toInt() ?? 0;
         hasTrack = a['hasTrack'] == true;
         lyricRev++;
@@ -338,10 +332,7 @@ class _CastWindowViewState extends State<CastWindowView> {
     }
     if (m.lyricRev != _lyricRev || _lyricRev < 0) {
       _lyricRev = m.lyricRev;
-      _push(
-          controller,
-          castWebLyric(m.lines,
-              title: m.title, artist: m.artist, seat: m.seat, durationMs: m.durationMs, hasTrack: m.hasTrack));
+      _push(controller, castWebLyric(m.lines, durationMs: m.durationMs, hasTrack: m.hasTrack));
     }
     if (m.tickRev != _tickRev || _tickRev < 0) {
       _tickRev = m.tickRev;
@@ -403,9 +394,6 @@ class _CastWindowViewState extends State<CastWindowView> {
           design: widget.model.design,
           lines: widget.model.lines,
           index: widget.model.lyricIndex,
-          title: widget.model.title,
-          artist: widget.model.artist,
-          seat: widget.model.seat,
           positionMs: widget.model.positionMs,
           durationMs: widget.model.durationMs,
           placeholder: widget.model.hasTrack ? l10n.castNoLyrics : '',

@@ -25,14 +25,16 @@
   #block { position: absolute; left: 0; box-sizing: border-box; }
   /* 左右留白放在行容器上，span 只量文字本身的宽度：
      放在 span 上会让 scrollWidth 把内边距也算进去，第二次起就会误缩字号。 */
-  #meta, .row { display: flex; align-items: center; box-sizing: border-box; }
-  .row { overflow: hidden; }
-  #meta > span, .row > span { white-space: nowrap; display: block; }
+  .row { display: flex; align-items: center; box-sizing: border-box; overflow: hidden; }
+  .row > span { white-space: nowrap; display: block; }
+  /* 逐字扫光：每词一个内联块，亮色层绝对定位叠在同一份文本上，按词内进度裁剪。
+     结构与 Flutter 侧 _LyricPainter 的「底层填充 + 裁剪亮色层」完全同构。 */
+  .row > span .kw { position: relative; display: inline-block; }
+  .row > span .kwl { position: absolute; left: 0; top: 0; pointer-events: none; }
 </style>
 </head>
 <body>
 <div id="block">
-  <div id="meta"><span></span></div>
   <div id="rows"></div>
 </div>
 <script>
@@ -43,15 +45,13 @@
     k: 1, w: 1920, h: 1080,
     style: null,
     lines: [],
-    title: '', artist: '', seat: '',
     durationMs: 0,
     hasTrack: false, noLyrics: '',
     anchor: { positionMs: 0, wallMs: 0, playing: false }
   };
-  var view = { vw: 0, vh: 0, rows: [], meta: '', width: -1, height: -1, scroll: null };
+  var view = { vw: 0, vh: 0, rows: [], width: -1, height: -1, scroll: null, karaoke: null };
 
   var elBlock = document.getElementById('block');
-  var elMeta = document.getElementById('meta');
   var elRows = document.getElementById('rows');
 
   function num(v, d) { return typeof v === 'number' && isFinite(v) ? v : d; }
@@ -75,16 +75,29 @@
     var sy = Math.max(0.4, Math.min(2, num(s.textHeight, 100) / 100));
     // 字高拉长时行高跟着长，行间距始终是额外的空白。
     var rowH = Math.max(base * 1.5, base * 1.2 * sy) + num(s.lineGap, 0) * k;
-    var metaH = view.meta === '' ? 0 : base * 0.34 + 12 * k;
-    var total = metaH + view.rows.length * rowH;
+    var total = view.rows.length * rowH;
     var y = cfg.h * (num(s.vertical, 50) / 100) - total / 2;
     y = Math.max(0, Math.min(Math.max(0, cfg.h - total), y));
-    return { k: k, pad: pad, avail: avail, base: base, rowH: rowH, metaH: metaH, total: total, y: y };
+    return { k: k, pad: pad, avail: avail, base: base, rowH: rowH, total: total, y: y };
   }
 
+  // 进度单调化：服务端的 positionMs 是引擎回调按 ~250ms 步进离散更新的，轮询到的
+  // 锚点可能比上一帧外推的位置还旧，直接采用会来回弹。小幅回退就地顶住（暂停感
+  // 比回弹好），超过 3 秒的回退才是换曲/拖动，直接接受。
+  var lastPos = -1, lastWall = 0;
   function positionMs() {
     var a = cfg.anchor;
-    return a.playing ? Math.max(0, a.positionMs + (Date.now() - a.wallMs)) : Math.max(0, a.positionMs);
+    var now = Date.now();
+    var raw = a.playing ? Math.max(0, a.positionMs + (now - a.wallMs)) : Math.max(0, a.positionMs);
+    if (lastPos >= 0 && a.playing) {
+      var forward = lastPos + Math.max(0, now - lastWall);
+      if (raw < forward && forward - raw < 3000) {
+        lastPos = forward; lastWall = now;
+        return forward;
+      }
+    }
+    lastPos = raw; lastWall = now;
+    return raw;
   }
 
   function indexAt(lines, ms) {
@@ -111,24 +124,16 @@
     var n = Math.max(1, num(cfg.style.lines, 2));
     var before = n >= 3 ? 1 : 0;
     var after = n === 1 ? 0 : 1;
-    var i = indexAt(lines, positionMs() + num(cfg.style.offsetMs, 0));
+    var i = indexAt(lines, positionMs());
     i = i < 0 ? 0 : Math.min(i, lines.length - 1);
     var out = [];
     for (var j = i - before; j <= i + after; j++) {
       if (j >= 0 && j < lines.length) {
         var t = rowTimes(lines, j);
-        out.push({ t: str(lines[j][1]), c: j === i, s: t.s, e: t.e });
+        out.push({ t: str(lines[j][1]), c: j === i, s: t.s, e: t.e, w: lines[j][3] });
       }
     }
     return out;
-  }
-
-  function metaText() {
-    var s = cfg.style, parts = [];
-    if (s.showTitle && str(cfg.title).trim()) parts.push(str(cfg.title).trim());
-    if (s.showArtist && str(cfg.artist).trim()) parts.push(str(cfg.artist).trim());
-    if (s.showSeat && str(cfg.seat).trim()) parts.push(str(cfg.seat).trim());
-    return parts.join(' · ');
   }
 
   function font(el, size, weight, family, colorValue, s, k) {
@@ -138,21 +143,13 @@
     el.style.color = colorValue;
     el.style.letterSpacing = (size * 0.01) + 'px';
     el.style.lineHeight = '1.2';
+    // 逐字词块的 offsetLeft 要以行 span 为参照，必须有一个定位祖先。
+    el.style.position = 'relative';
     var sw = num(s.strokeWidth, 0) * k * 2;
     el.style.webkitTextStrokeWidth = sw > 0.5 ? sw + 'px' : '0';
     el.style.webkitTextStrokeColor = '#000';
     el.style.paintOrder = 'stroke fill';
     el.style.textShadow = s.shadow ? '0 ' + (3 * k) + 'px ' + (10 * k) + 'px rgba(0,0,0,0.7)' : 'none';
-  }
-
-  // 附加信息（歌名/歌手）放不下就等比缩字号；歌词行不缩，超宽靠横向滚动。
-  function fitSpan(span, avail) {
-    var w = span.scrollWidth;
-    if (w > avail && w > 0) {
-      var size = parseFloat(span.style.fontSize) * avail / w;
-      span.style.fontSize = size + 'px';
-      span.style.letterSpacing = (size * 0.01) + 'px';
-    }
   }
 
   // 超宽行的横向位移：把唱到的横向位置保持在可视区约 65% 处，两端夹住。
@@ -190,10 +187,8 @@
     if (!rows.length && cfg.hasTrack && cfg.noLyrics) {
       rows = [{ t: cfg.noLyrics, c: false, s: 0, e: 0 }];
     }
-    var meta = metaText();
-    if (!force && view.vw === cfg.w && view.vh === cfg.h &&
-        view.meta === meta && sameRows(view.rows, rows)) return;
-    view.vw = cfg.w; view.vh = cfg.h; view.meta = meta; view.rows = rows;
+    if (!force && view.vw === cfg.w && view.vh === cfg.h && sameRows(view.rows, rows)) return;
+    view.vw = cfg.w; view.vh = cfg.h; view.rows = rows;
 
     var g = geometry();
     if (force || view.width !== cfg.w || view.height !== cfg.h) {
@@ -209,25 +204,13 @@
     elBlock.style.width = cfg.w + 'px';
     elBlock.style.height = g.total + 'px';
 
-    if (meta) {
-      elMeta.style.display = 'flex';
-      elMeta.style.height = g.metaH + 'px';
-      elMeta.style.justifyContent = align(s);
-      elMeta.style.padding = '0 ' + g.pad + 'px';
-      var ms = metaChild();
-      font(ms, g.base * 0.34, 500, s.fontFamily, color(s.otherColor, '#8B979F'), s, g.k);
-      if (ms.textContent !== meta) ms.textContent = meta;
-      fitSpan(ms, g.avail);
-    } else {
-      elMeta.style.display = 'none';
-    }
-
     var box = rowsChild(rows.length);
     var sx = Math.max(0.4, Math.min(2, num(s.textWidth, 100) / 100));
     var sy = Math.max(0.4, Math.min(2, num(s.textHeight, 100) / 100));
     var otherOpacity = Math.max(0, Math.min(1, num(s.otherOpacity, 100) / 100));
     elRows.style.justifyContent = 'center';
     view.scroll = null;
+    view.karaoke = null;
     for (var i = 0; i < rows.length; i++) {
       var row = box[i];
       row.style.height = g.rowH + 'px';
@@ -235,9 +218,12 @@
       // 非当前句整行淡出（含描边/阴影）；当前句与附加信息保持原样。
       row.style.opacity = rows[i].c ? '1' : String(otherOpacity);
       var span = row.firstChild;
-      if (span.textContent !== rows[i].t) span.textContent = rows[i].t;
-      font(span, g.base, num(s.fontWeight, 600), s.fontFamily,
-        rows[i].c ? color(s.currentColor, '#3DDC84') : color(s.otherColor, '#8B979F'), s, g.k);
+      var words = rows[i].c && Array.isArray(rows[i].w) && rows[i].w.length ? rows[i].w : null;
+      var litCss = color(s.currentColor, '#3DDC84');
+      // 逐字行底层用「其他行」色，亮色由每词的覆盖层按进度补上；整行行直接用当前句色。
+      var spanColor = !rows[i].c || words ? color(s.otherColor, '#8B979F') : litCss;
+      font(span, g.base, num(s.fontWeight, 600), s.fontFamily, spanColor, s, g.k);
+      buildKaraoke(row, span, rows[i].t, words, litCss);
       // 量真实占用宽度（含横向拉伸）：超宽就左对齐 + 当前句跟随演唱滚动，绝不缩字号。
       // 用 offsetWidth 量布局宽度，getBoundingClientRect 会把上一帧的位移也算进去。
       var spanW = span.offsetWidth * sx;
@@ -263,14 +249,96 @@
     updateScroll();
   }
 
-  // 当前句跟着演唱走：按整行时间比例推进横向位移。
+  // 当前句的逐字结构：有词表才拆词；其余情况保持整行单 span。
+  // 键用「文本 + 亮色 + 词数」：轮询每 500ms 全量 apply，不能每次都重建节点。
+  function buildKaraoke(row, span, text, words, litCss) {
+    var want = words ? text + '\x01' + litCss + '\x01' + words.length : null;
+    if (want && row._kw && row._kw.key === want) {
+      view.karaoke = row._kw.list;
+      return;
+    }
+    if (!want) {
+      if (row._kw || span.textContent !== text) {
+        row._kw = null;
+        span.textContent = text;
+      }
+      return;
+    }
+    span.textContent = '';
+    var list = [];
+    for (var i = 0; i < words.length; i++) {
+      var wt = str(words[i][2]);
+      if (!wt) continue;
+      var box = document.createElement('span');
+      box.className = 'kw';
+      box.textContent = wt;
+      var lit = document.createElement('span');
+      lit.className = 'kwl';
+      lit.textContent = wt;
+      lit.style.color = litCss;
+      lit._q = -1;
+      box.appendChild(lit);
+      span.appendChild(box);
+      list.push({ box: box, lit: lit, s: num(words[i][0], 0), e: num(words[i][1], 0) });
+    }
+    if (!list.length) {
+      row._kw = null;
+      span.textContent = text;
+      return;
+    }
+    row._kw = { key: want, list: list };
+    view.karaoke = list;
+  }
+
+  // 逐字推进：与 Flutter 侧 _revealOf 同一公式——已完成的词全亮，
+  // 当前词按词内进度裁剪亮色层，未来的词不亮。rAF 里逐帧调用。
+  function updateKaraoke() {
+    var ws = view.karaoke;
+    if (!ws || !ws.length) return;
+    var ms = positionMs();
+    for (var i = 0; i < ws.length; i++) {
+      var w = ws[i], q;
+      if (ms < w.s) q = 0;
+      else if (ms >= w.e) q = 1;
+      else q = w.e > w.s ? (ms - w.s) / (w.e - w.s) : 1;
+      q = Math.round(q * 100) / 100;
+      if (w.lit._q !== q) {
+        w.lit._q = q;
+        w.lit.style.clipPath = q >= 1 ? 'none' : 'inset(0 ' + ((1 - q) * 100).toFixed(2) + '% 0 0)';
+      }
+    }
+  }
+
+  // 逐字行的滚动焦点：唱到的横向位置（布局像素，不含 sx 拉伸）。
+  // 词间隙停在上一词末尾，整句未开始停在行首。
+  function karaokeFocus() {
+    var ws = view.karaoke;
+    if (!ws || !ws.length) return 0;
+    var ms = positionMs();
+    var idx = ws.length - 1, p = 1;
+    for (var i = 0; i < ws.length; i++) {
+      if (ms < ws[i].s) { idx = i > 0 ? i - 1 : 0; p = i > 0 ? 1 : 0; break; }
+      if (ms < ws[i].e && ws[i].e > ws[i].s) { idx = i; p = (ms - ws[i].s) / (ws[i].e - ws[i].s); break; }
+      idx = i; p = 1;
+    }
+    var w = ws[idx];
+    return w.box.offsetLeft + w.box.offsetWidth * p;
+  }
+
+  // 当前句跟着演唱走：逐字行跟随唱到的位置，整行行按时间比例推进。
   function updateScroll() {
     var sc = view.scroll;
     if (!sc) return;
-    var span = sc.e > sc.s ? sc.e - sc.s : 1;
-    var q = (positionMs() + num(cfg.style.offsetMs, 0) - sc.s) / span;
-    q = q < 0 ? 0 : q > 1 ? 1 : q;
-    var shift = scrollOffset(sc.w, sc.avail, sc.w * q);
+    var focus;
+    if (view.karaoke) {
+      focus = karaokeFocus() * sc.sx;
+    } else {
+      var span = sc.e > sc.s ? sc.e - sc.s : 1;
+      var q = (positionMs() - sc.s) / span;
+      q = q < 0 ? 0 : q > 1 ? 1 : q;
+      focus = sc.w * q;
+    }
+    var shift = scrollOffset(sc.w, sc.avail, focus);
     sc.span.style.transform =
       'translateX(' + (-shift).toFixed(2) + 'px) scale(' + sc.sx + ',' + sc.sy + ')';
   }
@@ -288,11 +356,6 @@
     if (a.length !== b.length) return false;
     for (var i = 0; i < a.length; i++) if (a[i].t !== b[i].t || a[i].c !== b[i].c) return false;
     return true;
-  }
-
-  function metaChild() {
-    if (!elMeta.firstChild) elMeta.appendChild(document.createElement('span'));
-    return elMeta.firstChild;
   }
 
   var boxRows = [];
@@ -317,9 +380,6 @@
       if (next.lines) cfg.lines = next.lines;
       if (next.noLyrics) cfg.noLyrics = str(next.noLyrics);
       if (next.nowPlaying) {
-        cfg.title = str(next.nowPlaying.title);
-        cfg.artist = str(next.nowPlaying.artist);
-        cfg.seat = str(next.nowPlaying.seat);
         cfg.durationMs = num(next.nowPlaying.durationMs, 0);
         cfg.hasTrack = next.nowPlaying.hasTrack === true;
       }
@@ -343,9 +403,12 @@
   });
 
   // 走词 5 帧/秒足够：进度与当前句都由锚点自己算，不需要逐帧 IPC。
-  setInterval(function () { render(false); }, 200);
-  // 横向跟随要逐帧才跟手：只改当前句的 transform，不重建节点。
+  // 这里也推一次逐字/滚动：页面被 OBS 隐藏或最小化时 rAF 会整档暂停，
+  // 没有这条兜底，重新显示前扫光会冻在旧位置。
+  setInterval(function () { updateKaraoke(); updateScroll(); render(false); }, 200);
+  // 逐字扫光与横向跟随要逐帧才跟手：只改裁剪/transform，不重建节点。
   requestAnimationFrame(function frame() {
+    updateKaraoke();
     updateScroll();
     requestAnimationFrame(frame);
   });

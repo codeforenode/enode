@@ -20,9 +20,6 @@ class CastLyricView extends StatelessWidget {
     required this.lines,
     required this.index,
     this.ratio = 1,
-    this.title,
-    this.artist,
-    this.seat,
     this.positionMs = 0,
     this.durationMs = 0,
     this.placeholder = '',
@@ -38,11 +35,6 @@ class CastLyricView extends StatelessWidget {
 
   /// 当前句下标；<0（前奏）时按第一句显示。
   final int index;
-  final String? title;
-  final String? artist;
-
-  /// 座位号原样显示（本机点歌时传「本机」）。
-  final String? seat;
   final int positionMs;
   final int durationMs;
 
@@ -64,7 +56,6 @@ class CastLyricView extends StatelessWidget {
                 box: box,
                 scale: castScaleFor(design) * ratio,
                 rows: _rows(),
-                meta: _metaText(),
                 positionMs: positionMs,
                 durationMs: durationMs,
               ),
@@ -73,15 +64,6 @@ class CastLyricView extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  String _metaText() {
-    final parts = <String>[
-      if (style.showTitle && (title?.trim().isNotEmpty ?? false)) title!.trim(),
-      if (style.showArtist && (artist?.trim().isNotEmpty ?? false)) artist!.trim(),
-      if (style.showSeat && (seat?.trim().isNotEmpty ?? false)) seat!.trim(),
-    ];
-    return parts.join(' · ');
   }
 
   List<LyricRow> _rows() => castLyricRows(style, lines, index, placeholder: placeholder);
@@ -140,7 +122,6 @@ class CastLyricLayer extends StatelessWidget {
     required this.scale,
     required this.lines,
     required this.index,
-    this.meta = '',
     this.positionMs = 0,
     this.durationMs = 0,
     this.placeholder = '',
@@ -153,7 +134,6 @@ class CastLyricLayer extends StatelessWidget {
   final double scale;
   final List<LyricLine> lines;
   final int index;
-  final String meta;
 
   /// 有曲目但没有歌词时显示的一行占位；空串表示待机态不显示。
   final String placeholder;
@@ -169,7 +149,6 @@ class CastLyricLayer extends StatelessWidget {
             box: box,
             scale: scale,
             rows: castLyricRows(style, lines, index, placeholder: placeholder),
-            meta: meta,
             positionMs: positionMs,
             durationMs: durationMs,
             centered: true,
@@ -220,7 +199,6 @@ class _LyricPainter extends CustomPainter {
     required this.box,
     required this.scale,
     required this.rows,
-    required this.meta,
     required this.positionMs,
     required this.durationMs,
     this.centered = false,
@@ -232,7 +210,6 @@ class _LyricPainter extends CustomPainter {
   /// 设计像素 → 本画面像素的倍数（已含预览缩放）。
   final double scale;
   final List<LyricRow> rows;
-  final String meta;
   final int positionMs;
   final int durationMs;
 
@@ -254,22 +231,14 @@ class _LyricPainter extends CustomPainter {
     final base = style.fontSize * k;
     // 字高拉长时行高跟着长，行间距始终是额外的空白。
     double rowHFor(double b) => math.max(b * 1.5, b * 1.2 * th) + gap;
-    double metaHFor(double b) => meta.isEmpty ? 0.0 : b * .34 + 12 * k;
     final rowH = rowHFor(base);
-    final metaH = metaHFor(base);
-    final total = metaH + rows.length * rowH;
+    final total = rows.length * rowH;
     // vertical 指歌词块「中心」在投放区高度上的百分比；再夹回画面内，避免上下出血。
     var y = centered
         ? math.max(0.0, (box.height - total) / 2)
         : box.height * (style.vertical / 100) - total / 2;
     if (!centered) y = y.clamp(0.0, math.max(0.0, box.height - total));
-    if (meta.isNotEmpty) {
-      _draw(canvas, text: meta, fontSize: base * .34, weight: 500,
-          color: Color(style.otherColor), top: y + (metaH - 12 * k) / 2, pad: pad, avail: avail, k: k,
-          fitToWidth: true);
-      y += metaH;
-    }
-    final ms = positionMs + style.offsetMs;
+    final ms = positionMs;
     for (final row in rows) {
       final karaoke = row.current && row.words.isNotEmpty;
       // 字号固定为用户设置值：超宽不缩字，当前句跟随演唱向左滚，其余行从左侧裁切。
@@ -337,16 +306,15 @@ class _LyricPainter extends CustomPainter {
       double sy = 1,
       double? left,
       double opacity = 1,
-      bool fitToWidth = false,
       Color? highlight,
       ({int before, int length, double p})? reveal}) {
-    // 只有附加信息（歌名/歌手）还做宽度贴合；歌词行一律用用户设置的固定字号。
-    final size = fitToWidth ? _fitFontSize(text, fontSize, weight, avail, sx) : fontSize;
+    // 歌词行一律用用户设置的固定字号：超宽不缩字，靠裁切 + 滚动解决。
+    final size = fontSize;
     final strokeW = style.strokeWidth * k * 2;
     final shadowed = style.shadow;
     final fade = opacity.clamp(0.0, 1.0);
     final fillColor = fade >= .999 ? color : color.withValues(alpha: color.a * fade);
-    final fitWidth = fitToWidth ? avail / sx : double.infinity;
+    const fitWidth = double.infinity;
     TextPainter layer(Color? color, {Paint? foreground, bool shadows = false}) =>
         _painter(text, size, weight, color,
             foreground: foreground, shadows: shadows, shadowOpacity: fade)
@@ -400,7 +368,7 @@ class _LyricPainter extends CustomPainter {
 
   /// 当前句唱到哪：已完成的字数 + 当前字内的进度；整句唱完返回满宽。
   ({int before, int length, double p}) _revealOf(LyricRow row) {
-    final ms = positionMs + style.offsetMs;
+    final ms = positionMs;
     var before = 0;
     for (final word in row.words) {
       if (ms < word.startMs) return (before: before, length: 0, p: 0);
@@ -421,16 +389,6 @@ class _LyricPainter extends CustomPainter {
         CastAlign.center => pad + (avail - width) / 2,
         CastAlign.right => pad + avail - width,
       };
-
-  /// 附加信息（歌名/歌手）放不下就等比缩字号；歌词行不缩，超宽靠横向滚动。
-  /// 横向拉伸后按拉伸后的宽度判断，缩完的字号仍要再乘 [sx] 才落进可用宽度。
-  double _fitFontSize(String text, double fontSize, int weight, double avail, double sx) {
-    if (fontSize <= 0 || avail <= 0) return math.max(1, fontSize);
-    final probe = _painter(text, fontSize, weight, const Color(0xFF000000))..layout();
-    final width = probe.width * sx;
-    if (width <= avail) return fontSize;
-    return math.max(1, fontSize * avail / width);
-  }
 
   TextPainter _painter(String text, double size, int weight, Color? color,
       {Paint? foreground, bool shadows = false, double shadowOpacity = 1}) =>
@@ -464,7 +422,6 @@ class _LyricPainter extends CustomPainter {
   bool shouldRepaint(_LyricPainter old) =>
       old.style != style ||
       old.box != box ||
-      old.meta != meta ||
       old.positionMs != positionMs ||
       old.durationMs != durationMs ||
       old.centered != centered ||

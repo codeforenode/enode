@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../desktop/cast_windows.dart';
+import '../desktop/lyric_http.dart';
 import '../edge/config.dart';
 import '../edge/edge_node.dart';
 import '../edge/featured.dart';
@@ -385,6 +386,48 @@ class AppState extends ChangeNotifier {
   /// 退出进程前先把投放窗收干净，否则子引擎的窗口会黑在屏幕上。
   Future<void> closeCastWindows() => _castWindows?.closeAll() ?? Future.value();
 
+  // ---------------- 局域网歌词页（HTTP） ----------------
+
+  LyricShareSettings _lyricShare = const LyricShareSettings();
+  LyricShareServer? _lyricShareServer;
+
+  LyricShareSettings get lyricShare => _lyricShare;
+
+  /// 每个网卡一条可直接打开的地址；未开启时为空。
+  List<String> get lyricShareUrls => _lyricShareServer?.urls ?? const [];
+
+  String? get lyricShareError => _lyricShareServer?.lastError;
+  bool get lyricShareRunning => _lyricShareServer?.running ?? false;
+
+  void bindLyricShare() {
+    if (_disposed || _lyricShareServer != null) return;
+    _lyricShareServer = LyricShareServer(this);
+  }
+
+  Future<void> loadLyricShare() async {
+    _lyricShare = await LyricShareSettings.load();
+    await _applyLyricShare();
+    notifyListeners();
+  }
+
+  /// 设置页改开关/端口后调用：先落盘，再按新参数重启服务。
+  Future<void> applyLyricShare(LyricShareSettings next) async {
+    _lyricShare = next;
+    await next.save();
+    await _applyLyricShare();
+    notifyListeners();
+  }
+
+  Future<void> _applyLyricShare() async {
+    final server = _lyricShareServer;
+    if (server == null) return;
+    if (!_lyricShare.usable) {
+      await server.stop();
+      return;
+    }
+    await server.start(port: _lyricShare.port);
+  }
+
   /// 读设置 + 扫一次屏。非 Windows 或无插件环境扫到空列表，投放入口随之关闭。
   Future<void> loadCast() async {
     final monitors = await scanCastMonitors();
@@ -419,12 +462,9 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> saveCast(CastSettings next) async {
-    final prev = _cast;
     _cast = next;
     notifyListeners();
     await next.save();
-    // 偏移是发布给 C端 的歌词元数据，改了要重发一次 retained 消息。
-    if (prev.style.offsetMs != next.style.offsetMs) edge.publishLyric();
   }
 
   // ---------------- 广播（MQTT） ----------------
@@ -1095,10 +1135,10 @@ class AppState extends ChangeNotifier {
     EnodeLog.i(
       'lyric',
       '$id 就绪 ${text.length} 字符 format=${lyric?.format} '
-      'offset=${_cast.style.offsetMs} ${watch.elapsedMilliseconds}ms',
+      '${watch.elapsedMilliseconds}ms',
     );
-    // 偏移取投放设置里那一份：墙上字幕和手机端的词要按同一个量挪。
-    return {'trackKey': np.trackKey, 'format': 'lrc', 'offsetMs': _cast.style.offsetMs, 'text': text};
+    // offsetMs 是对外协议保留字段：投放偏移设置已下线，恒为 0。
+    return {'trackKey': np.trackKey, 'format': 'lrc', 'offsetMs': 0, 'text': text};
   }
 
   Map<String, Object?> _health() => {
@@ -1128,6 +1168,7 @@ class AppState extends ChangeNotifier {
     webDav?.removeListener(_onWebDavChanged);
     webDav?.dispose();
     _castWindows?.dispose();
+    unawaited(_lyricShareServer?.stop() ?? Future.value());
     _monitorWatch?.cancel();
     _monitorWatch = null;
     _tick?.cancel();

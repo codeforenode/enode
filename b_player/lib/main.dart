@@ -183,6 +183,9 @@ class _BPlayerAppState extends State<BPlayerApp> with WidgetsBindingObserver {
     if (Platform.isWindows) {
       _state.bindCastWindows();
       unawaited(_state.loadCast());
+      // 局域网歌词页默认关闭，开启过才监听端口。
+      _state.bindLyricShare();
+      unawaited(_state.loadLyricShare());
     }
     widget.desktop?.onBeforeExit = _shutDown;
   }

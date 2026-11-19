@@ -655,6 +655,59 @@ class AppL10nZh extends AppL10n {
   String get castNoLyrics => '暫無歌詞';
 
   @override
+  String get lyricShareTitle => '區域網路歌詞頁';
+
+  @override
+  String get lyricShareIntro => '開啟後，同一網路裡的手機、平板或另一台電腦用瀏覽器開啟下面的網址，就能看到目前曲目的歌詞。';
+
+  @override
+  String get lyricShareEnable => '啟用';
+
+  @override
+  String get lyricShareDisable => '停用';
+
+  @override
+  String get lyricSharePort => '連接埠';
+
+  @override
+  String get lyricShareApply => '套用';
+
+  @override
+  String get lyricShareCopy => '複製網址';
+
+  @override
+  String get lyricShareCopied => '已複製';
+
+  @override
+  String get lyricShareOpenHint => '任何裝置開啟即可查看，不需要密碼；畫面背景透明，可直接疊加到直播或錄屏軟體。';
+
+  @override
+  String get lyricShareSecurity => '同一網路內的任何裝置都能看到目前歌詞；只暴露正在播放的這一首，不含曲庫。';
+
+  @override
+  String get lyricShareHint => '手機需與電腦在同一區域網路，Windows 防火牆要放行這個連接埠。';
+
+  @override
+  String get lyricShareOn => '執行中';
+
+  @override
+  String get lyricShareOff => '已停止';
+
+  @override
+  String get lyricShareEmpty => '尚未啟用。';
+
+  @override
+  String get lyricShareIdle => '暫無播放內容';
+
+  @override
+  String get lyricSharePortInvalid => '連接埠需在 1024–65535 之間';
+
+  @override
+  String lyricShareUnavailable(String reason) {
+    return '服務未能啟動：$reason';
+  }
+
+  @override
   String get onlineLibrary => '線上曲庫';
 
   @override
@@ -1378,12 +1431,6 @@ class AppL10nZh extends AppL10n {
   String get castExtras => '附加資訊';
 
   @override
-  String get castShowTitle => '歌名';
-
-  @override
-  String get castShowArtist => '歌手';
-
-  @override
   String get castShowSeat => '座位號';
 
   @override
@@ -1415,12 +1462,6 @@ class AppL10nZh extends AppL10n {
 
   @override
   String get castColorHint => '#RRGGBB 或 #AARRGGBB；A 是文字自身的透明度。';
-
-  @override
-  String get castDemoTitle => '晚風不歇';
-
-  @override
-  String get castDemoArtist => 'demo 歌手';
 
   @override
   String get castFontYaHei => '微軟雅黑';
@@ -1700,9 +1741,6 @@ class AppL10nZh extends AppL10n {
   String screenLineCount(int count) {
     return '$count 行';
   }
-
-  @override
-  String get screenTimeOffset => '時間偏移';
 
   @override
   String get screenLyricNoBgNote => '歌詞不帶底色。要背景就把圖片或影片拉到滿版、鎖定、放最底層。';
@@ -2798,6 +2836,59 @@ class AppL10nZhHans extends AppL10nZh {
   String get castNoLyrics => '暂无歌词';
 
   @override
+  String get lyricShareTitle => '局域网歌词页';
+
+  @override
+  String get lyricShareIntro => '开启后，同一网络里的手机、平板或另一台电脑用浏览器打开下面的网址，就能看到当前曲目的歌词。';
+
+  @override
+  String get lyricShareEnable => '启用';
+
+  @override
+  String get lyricShareDisable => '停用';
+
+  @override
+  String get lyricSharePort => '端口';
+
+  @override
+  String get lyricShareApply => '应用';
+
+  @override
+  String get lyricShareCopy => '复制网址';
+
+  @override
+  String get lyricShareCopied => '已复制';
+
+  @override
+  String get lyricShareOpenHint => '任何设备打开即可查看，不需要密码；画面背景透明，可直接叠加到直播或录屏软件。';
+
+  @override
+  String get lyricShareSecurity => '同一网络内的任何设备都能看到当前歌词；只暴露正在播放的这一首，不含曲库。';
+
+  @override
+  String get lyricShareHint => '手机需与电脑在同一局域网，Windows 防火墙要放行这个端口。';
+
+  @override
+  String get lyricShareOn => '运行中';
+
+  @override
+  String get lyricShareOff => '已停止';
+
+  @override
+  String get lyricShareEmpty => '尚未启用。';
+
+  @override
+  String get lyricShareIdle => '暂无播放内容';
+
+  @override
+  String get lyricSharePortInvalid => '端口需在 1024–65535 之间';
+
+  @override
+  String lyricShareUnavailable(String reason) {
+    return '服务未能启动：$reason';
+  }
+
+  @override
   String get onlineLibrary => '在线曲库';
 
   @override
@@ -3521,12 +3612,6 @@ class AppL10nZhHans extends AppL10nZh {
   String get castExtras => '附加信息';
 
   @override
-  String get castShowTitle => '歌名';
-
-  @override
-  String get castShowArtist => '歌手';
-
-  @override
   String get castShowSeat => '座位号';
 
   @override
@@ -3558,12 +3643,6 @@ class AppL10nZhHans extends AppL10nZh {
 
   @override
   String get castColorHint => '#RRGGBB 或 #AARRGGBB；A 是文字自身的透明度。';
-
-  @override
-  String get castDemoTitle => '晚风不歇';
-
-  @override
-  String get castDemoArtist => 'demo 歌手';
 
   @override
   String get castFontYaHei => '微软雅黑';
@@ -3843,9 +3922,6 @@ class AppL10nZhHans extends AppL10nZh {
   String screenLineCount(int count) {
     return '$count 行';
   }
-
-  @override
-  String get screenTimeOffset => '时间偏移';
 
   @override
   String get screenLyricNoBgNote => '歌词不带底色。要背景就把图片或影片拉到满版、锁定、放最底层。';
@@ -4942,6 +5018,59 @@ class AppL10nZhHant extends AppL10nZh {
   String get castNoLyrics => '暫無歌詞';
 
   @override
+  String get lyricShareTitle => '區域網路歌詞頁';
+
+  @override
+  String get lyricShareIntro => '開啟後，同一網路裡的手機、平板或另一台電腦用瀏覽器開啟下面的網址，就能看到目前曲目的歌詞。';
+
+  @override
+  String get lyricShareEnable => '啟用';
+
+  @override
+  String get lyricShareDisable => '停用';
+
+  @override
+  String get lyricSharePort => '連接埠';
+
+  @override
+  String get lyricShareApply => '套用';
+
+  @override
+  String get lyricShareCopy => '複製網址';
+
+  @override
+  String get lyricShareCopied => '已複製';
+
+  @override
+  String get lyricShareOpenHint => '任何裝置開啟即可查看，不需要密碼；畫面背景透明，可直接疊加到直播或錄屏軟體。';
+
+  @override
+  String get lyricShareSecurity => '同一網路內的任何裝置都能看到目前歌詞；只暴露正在播放的這一首，不含曲庫。';
+
+  @override
+  String get lyricShareHint => '手機需與電腦在同一區域網路，Windows 防火牆要放行這個連接埠。';
+
+  @override
+  String get lyricShareOn => '執行中';
+
+  @override
+  String get lyricShareOff => '已停止';
+
+  @override
+  String get lyricShareEmpty => '尚未啟用。';
+
+  @override
+  String get lyricShareIdle => '暫無播放內容';
+
+  @override
+  String get lyricSharePortInvalid => '連接埠需在 1024–65535 之間';
+
+  @override
+  String lyricShareUnavailable(String reason) {
+    return '服務未能啟動：$reason';
+  }
+
+  @override
   String get onlineLibrary => '線上曲庫';
 
   @override
@@ -5665,12 +5794,6 @@ class AppL10nZhHant extends AppL10nZh {
   String get castExtras => '附加資訊';
 
   @override
-  String get castShowTitle => '歌名';
-
-  @override
-  String get castShowArtist => '歌手';
-
-  @override
   String get castShowSeat => '座位號';
 
   @override
@@ -5702,12 +5825,6 @@ class AppL10nZhHant extends AppL10nZh {
 
   @override
   String get castColorHint => '#RRGGBB 或 #AARRGGBB；A 是文字自身的透明度。';
-
-  @override
-  String get castDemoTitle => '晚風不歇';
-
-  @override
-  String get castDemoArtist => 'demo 歌手';
 
   @override
   String get castFontYaHei => '微軟雅黑';
@@ -5987,9 +6104,6 @@ class AppL10nZhHant extends AppL10nZh {
   String screenLineCount(int count) {
     return '$count 行';
   }
-
-  @override
-  String get screenTimeOffset => '時間偏移';
 
   @override
   String get screenLyricNoBgNote => '歌詞不帶底色。要背景就把圖片或影片拉到滿版、鎖定、放最底層。';

@@ -24,7 +24,6 @@
   .item { position: absolute; overflow: hidden; box-sizing: border-box; }
   .item.lyric { display: flex; }
   .ly { width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; box-sizing: border-box; }
-  .ly .meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; letter-spacing: .04em; }
   .ly .rows { width: 100%; display: flex; flex-direction: column; }
   .ly .row { display: flex; align-items: center; width: 100%; box-sizing: border-box; overflow: hidden; }
   .ly .row > span { white-space: nowrap; display: block; }
@@ -50,7 +49,7 @@
   var cfg = {
     k: 1, w: 1920, h: 1080,
     screen: null,
-    lines: [], title: '', artist: '', seat: '', durationMs: 0,
+    lines: [], durationMs: 0,
     hasTrack: false, noLyrics: '',
     // 闲时引导语的开关。默认 false：宁可先不显示，也别让「扫码点歌」压在正在放的歌上。
     idle: false,
@@ -91,7 +90,7 @@
     var n = Math.max(1, num(style.lines, 2));
     var before = n >= 3 ? 1 : 0;
     var after = n === 1 ? 0 : 1;
-    var i = indexAt(lines, positionMs() + num(style.offsetMs, 0));
+    var i = indexAt(lines, positionMs());
     i = i < 0 ? 0 : Math.min(i, lines.length - 1);
     var out = [];
     for (var j = i - before; j <= i + after; j++) {
@@ -102,14 +101,6 @@
       }
     }
     return out;
-  }
-
-  function metaText(style) {
-    var parts = [];
-    if (style.showTitle && str(cfg.title).trim()) parts.push(str(cfg.title).trim());
-    if (style.showArtist && str(cfg.artist).trim()) parts.push(str(cfg.artist).trim());
-    if (style.showSeat && str(cfg.seat).trim()) parts.push(str(cfg.seat).trim());
-    return parts.join(' · ');
   }
 
   function styleFont(el, size, weight, family, colorValue, style) {
@@ -126,16 +117,6 @@
     el.style.textShadow = style.shadow ? '0 ' + (3 * kk) + 'px ' + (10 * kk) + 'px rgba(0,0,0,0.7)' : 'none';
   }
 
-  // 附加信息（歌名/歌手）放不下就等比缩字号；歌词行不缩，超宽靠横向滚动。
-  function fitSpan(span, avail) {
-    var w = span.scrollWidth;
-    if (w > avail && w > 0) {
-      var size = parseFloat(span.style.fontSize) * avail / w;
-      span.style.fontSize = size + 'px';
-      span.style.letterSpacing = (size * 0.01) + 'px';
-    }
-  }
-
   function alignOf(style) {
     return style.align === 'left' ? 'flex-start' : style.align === 'right' ? 'flex-end' : 'center';
   }
@@ -145,14 +126,11 @@
   function buildLyric(el) {
     var ly = document.createElement('div');
     ly.className = 'ly';
-    var meta = document.createElement('div');
-    meta.className = 'meta';
     var rows = document.createElement('div');
     rows.className = 'rows';
-    ly.appendChild(meta);
     ly.appendChild(rows);
     el.appendChild(ly);
-    return { ly: ly, meta: meta, rows: rows, rowEls: [] };
+    return { ly: ly, rows: rows, rowEls: [] };
   }
 
   function buildText(el) {
@@ -234,8 +212,7 @@
 
   function renderLyric(node) {
     var style = node.item.style || {};
-    node.lyric.offset = num(style.offsetMs, 0);
-    node.lyric.index = indexAt(cfg.lines, positionMs() + node.lyric.offset);
+    node.lyric.index = indexAt(cfg.lines, positionMs());
     var W = node.el.clientWidth, H = node.el.clientHeight;
     if (!W || !H) return;
     var kk = k();
@@ -246,7 +223,6 @@
     if (!rows.length && cfg.hasTrack && cfg.noLyrics) {
       rows = [{ t: cfg.noLyrics, c: false, i: -1, w: null, s: 0, e: 0 }];
     }
-    var meta = metaText(style);
     var base = num(style.fontSize, 88) * kk;
     var gap = num(style.lineGap, 0) * kk;
     var sx = Math.max(0.4, Math.min(2, num(style.textWidth, 100) / 100));
@@ -263,17 +239,6 @@
     var ly = node.lyric;
     ly.scrollPair = null;
     ly.ly.style.padding = '0 ' + pad + 'px';
-
-    if (meta) {
-      ly.meta.style.display = 'block';
-      styleFont(ly.meta, fs * 0.34, 500, style.fontFamily, style.otherColorCss || '#8B979F', style);
-      if (ly.meta.textContent !== meta) ly.meta.textContent = meta;
-      ly.meta.style.textAlign = style.align || 'center';
-      fitSpan(ly.meta, avail);
-      ly.meta.style.marginBottom = (6 * kk) + 'px';
-    } else {
-      ly.meta.style.display = 'none';
-    }
 
     while (ly.rowEls.length < rows.length) {
       var row = document.createElement('div');
@@ -374,7 +339,7 @@
     }
     ly.cells = cells;
     ly.avail = avail;
-    applyScroll(node, ly.scrollPair, positionMs() + ly.offset);
+    applyScroll(node, ly.scrollPair, positionMs());
   }
 
   // 超宽行的横向位移：把唱到的横向位置保持在可视区约 65% 处，两端夹住。
@@ -417,8 +382,7 @@
       var node = nodes[id];
       if (node.kind !== 'lyric' || !node.lyric) continue;
       var ly = node.lyric;
-      var shifted = ms + num(ly.offset, 0);
-      var index = indexAt(cfg.lines, shifted);
+      var index = indexAt(cfg.lines, ms);
       if (index !== ly.index) {
         renderLyric(node); // 换句立刻重建，不等下一轮整屏刷新
         continue;
@@ -602,9 +566,6 @@
       if (next.lines) cfg.lines = next.lines;
       if (next.noLyrics) cfg.noLyrics = str(next.noLyrics);
       if (next.nowPlaying) {
-        cfg.title = str(next.nowPlaying.title);
-        cfg.artist = str(next.nowPlaying.artist);
-        cfg.seat = str(next.nowPlaying.seat);
         cfg.durationMs = num(next.nowPlaying.durationMs, 0);
         cfg.hasTrack = next.nowPlaying.hasTrack === true;
       }

@@ -683,6 +683,63 @@ class AppL10nEn extends AppL10n {
   String get castNoLyrics => 'No lyrics';
 
   @override
+  String get lyricShareTitle => 'LAN lyrics page';
+
+  @override
+  String get lyricShareIntro =>
+      'Once enabled, any phone, tablet or computer on the same network can open the address below to follow the current track\'s lyrics.';
+
+  @override
+  String get lyricShareEnable => 'Enable';
+
+  @override
+  String get lyricShareDisable => 'Disable';
+
+  @override
+  String get lyricSharePort => 'Port';
+
+  @override
+  String get lyricShareApply => 'Apply';
+
+  @override
+  String get lyricShareCopy => 'Copy address';
+
+  @override
+  String get lyricShareCopied => 'Copied';
+
+  @override
+  String get lyricShareOpenHint =>
+      'Open on any device — no password. The background is transparent, ready to overlay in OBS or any capture tool.';
+
+  @override
+  String get lyricShareSecurity =>
+      'Anyone on the same network can see the current lyrics. Only the playing track is exposed; the library stays on this machine.';
+
+  @override
+  String get lyricShareHint =>
+      'The phone must be on the same network, and Windows Firewall must allow this port.';
+
+  @override
+  String get lyricShareOn => 'Running';
+
+  @override
+  String get lyricShareOff => 'Stopped';
+
+  @override
+  String get lyricShareEmpty => 'Not enabled yet.';
+
+  @override
+  String get lyricShareIdle => 'Nothing is playing';
+
+  @override
+  String get lyricSharePortInvalid => 'Port must be between 1024 and 65535';
+
+  @override
+  String lyricShareUnavailable(String reason) {
+    return 'Server could not start: $reason';
+  }
+
+  @override
   String get onlineLibrary => 'Online library';
 
   @override
@@ -1419,12 +1476,6 @@ class AppL10nEn extends AppL10n {
   String get castExtras => 'Extra info';
 
   @override
-  String get castShowTitle => 'Title';
-
-  @override
-  String get castShowArtist => 'Artist';
-
-  @override
   String get castShowSeat => 'Seat';
 
   @override
@@ -1459,12 +1510,6 @@ class AppL10nEn extends AppL10n {
   @override
   String get castColorHint =>
       '#RRGGBB or #AARRGGBB; A is the text\'s own opacity.';
-
-  @override
-  String get castDemoTitle => 'Evening Breeze';
-
-  @override
-  String get castDemoArtist => 'Demo artist';
 
   @override
   String get castFontYaHei => 'Microsoft YaHei';
@@ -1751,9 +1796,6 @@ class AppL10nEn extends AppL10n {
   String screenLineCount(int count) {
     return '$count lines';
   }
-
-  @override
-  String get screenTimeOffset => 'Offset';
 
   @override
   String get screenLyricNoBgNote =>

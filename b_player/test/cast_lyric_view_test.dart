@@ -14,8 +14,6 @@ const _style = CastStyle(
   fontSize: 88,
   strokeWidth: 0,
   shadow: false,
-  showTitle: false,
-  showArtist: false,
 );
 
 const _lines = <LyricLine>[
@@ -226,8 +224,6 @@ void main() {
                       fontWeight: 400,
                       strokeWidth: 0,
                       shadow: false,
-                      showTitle: false,
-                      showArtist: false,
                       otherOpacity: opacity,
                     ),
                     box: const Size(600, 400),
