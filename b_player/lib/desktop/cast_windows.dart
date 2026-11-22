@@ -143,6 +143,18 @@ class CastWindows {
 
   List<String> get windowMonitorIds => _wins.keys.toList();
 
+  /// 设置页预览：画布浏览器的 Flutter 纹理 + 画布坐标。
+  int? get previewTextureId => _canvas?.previewTextureId;
+  Size? get canvasSize {
+    final s = _canvas?.canvasSize;
+    return s != null && s.width > 0 && s.height > 0 ? s : null;
+  }
+
+  Rect? canvasRectOf(String screenId) => _canvas?.canvasRectOf(screenId);
+
+  /// 设置页在屏幕管理时打开收帧；离开时关掉，画布不背额外开销。
+  Future<void> setPreview(bool on) => _canvas?.setPreview(on) ?? Future.value();
+
   /// 投放屏右键菜单：关掉本屏，或从任意一屏关掉全部。
   void _onPresenterMenu(int index, int command) {
     if (command == CastCanvas.menuCloseAll) {
@@ -152,6 +164,19 @@ class CastWindows {
     final ids = _canvas?.screenIds ?? const <String>[];
     if (index < 0 || index >= ids.length) return;
     unawaited(_state.closeCastScreen(ids[index]));
+  }
+
+  /// 打开网址素材的交互窗口（画布上的活镜像 + 遥控器）。只有画布通道在投时
+  /// 可用；失败原因写进 [lastError]，设置页经 castWindowsError 显示。
+  Future<bool> openUrlMirror(CastMaterial material) async {
+    final canvas = _canvas;
+    if (canvas == null || !canvas.active) {
+      lastError = l10n.castMirrorNeedsCasting;
+      return false;
+    }
+    final ok = await canvas.openMirror(material, _state.cast, _state.castMonitors);
+    if (!ok) lastError = canvas.lastError ?? lastError;
+    return ok;
   }
 
   void _onApp() {
@@ -214,6 +239,7 @@ class CastWindows {
             await _destroy(id);
           }
         }
+        await canvas.applyFrameRate(s.frameRate);
         await canvas.applyComposition(s, monitors);
         await _push(forceLyric: true);
         return;

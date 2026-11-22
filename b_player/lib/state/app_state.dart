@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show Rect, Size;
 
 import 'package:flutter/foundation.dart';
 
@@ -349,6 +350,16 @@ class AppState extends ChangeNotifier {
   /// 开窗 / 掉窗的可读原因，设置页原样显示（拒绝要带回理由）。
   String? get castWindowsError => _castWindows?.lastError;
 
+  /// 打开网址素材的交互窗口（投放画面的活镜像 + 遥控器）。失败时通知监听者，
+  /// 设置页好把 [castWindowsError] 亮出来；非 Windows / 未接投放窗时返回 false。
+  Future<bool> openUrlInteractWindow(CastMaterial material) async {
+    final windows = _castWindows;
+    if (windows == null || _disposed) return false;
+    final ok = await windows.openUrlMirror(material);
+    if (!ok) notifyListeners();
+    return ok;
+  }
+
   /// 把设置和播放进度接到真实投放窗上。只在 Windows 主 isolate 调，测试不接就不会碰插件。
   void bindCastWindows() {
     if (_disposed || _castWindows != null) return;
@@ -385,6 +396,14 @@ class AppState extends ChangeNotifier {
 
   /// 退出进程前先把投放窗收干净，否则子引擎的窗口会黑在屏幕上。
   Future<void> closeCastWindows() => _castWindows?.closeAll() ?? Future.value();
+
+  /// 设置页的实时画面：画布浏览器的纹理与坐标（未投放时为空）。
+  int? get castPreviewTextureId => _castWindows?.previewTextureId;
+  Size? get castCanvasSize => _castWindows?.canvasSize;
+  Rect? castScreenCanvasRect(String monitorId) => _castWindows?.canvasRectOf(monitorId);
+
+  /// 进入屏幕管理时打开收帧，离开时关掉。
+  Future<void> setCastPreview(bool on) => _castWindows?.setPreview(on) ?? Future.value();
 
   // ---------------- 局域网歌词页（HTTP） ----------------
 

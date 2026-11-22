@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/services.dart';
 
@@ -24,7 +25,9 @@ class CastCanvas {
   static const menuCloseAll = 2;
 
   int? _browserId;
+  int? _textureId;
   String _layoutKey = '';
+  int _frameRate = 0;
   int _screens = 0;
   List<String> _screenIds = const [];
   List<Map<String, Object?>> _layout = const [];
@@ -34,6 +37,48 @@ class CastCanvas {
 
   /// 每块屏的素材构图；只在设置对象变化时重发，走词/进度不碰它。
   List<Map<String, Object?>> _composition = const [];
+
+  /// 画布（所有投放区并集）的总像素，镜像窗口的 UV 与输入映射都拿它换算。
+  int _canvasWidth = 0;
+  int _canvasHeight = 0;
+
+  /// 设置页的画布预览：拿画布浏览器的 Flutter 纹理，只在设置页开着时收帧。
+  bool _previewOn = false;
+
+  /// 画布浏览器上交给 Flutter 的纹理；未投放或画布没起来时为空。
+  int? get previewTextureId => _browserId == null ? null : _textureId;
+
+  /// 画布逻辑像素尺寸（预览裁剪的坐标系）。
+  Size get canvasSize => Size(_canvasWidth.toDouble(), _canvasHeight.toDouble());
+
+  /// 某块在投屏在画布里的矩形（逻辑像素）；不在投返回 null。
+  Rect? canvasRectOf(String screenId) {
+    final i = _screenIds.indexOf(screenId);
+    if (i < 0 || i >= _layout.length) return null;
+    final l = _layout[i];
+    double n(String k) => (l[k] as num?)?.toDouble() ?? 0;
+    final w = n('w');
+    final h = n('h');
+    if (w <= 0 || h <= 0) return null;
+    return Rect.fromLTWH(n('x'), n('y'), w, h);
+  }
+
+  /// 设置页进入/离开屏幕管理时开关预览收帧。
+  Future<void> setPreview(bool on) async {
+    if (_previewOn == on) return;
+    _previewOn = on;
+    await _applyPreview();
+  }
+
+  Future<void> _applyPreview() async {
+    final id = _browserId;
+    if (id == null) return;
+    try {
+      await _channel.invokeMethod<void>('setFlutterPreview', {'browserId': id, 'on': _previewOn});
+    } catch (_) {
+      // 浏览器刚被重建时通道里还没有它；重建后 ensure 会再补一次。
+    }
+  }
 
   /// 投放屏右键菜单：index 是 presenter 序号，command 见 menuClose*。
   void Function(int index, int command)? onPresenterMenu;
@@ -102,6 +147,8 @@ class CastCanvas {
         lastError = l10n.castRegionZero;
         return false;
       }
+      _canvasWidth = width;
+      _canvasHeight = height;
       final layout = <Map<String, Object?>>[];
       final presenters = <Map<String, Object?>>[];
       for (final t in tiles) {
@@ -125,14 +172,18 @@ class CastCanvas {
       final result = await _createBrowser({
         'initialUrl': castCanvasPageUrl(),
         'mediaPlaybackRequiresUserGesture': false,
-        // 不传 profileName：CEF 用一个新的内存上下文，画布不落盘任何数据。
+        // 命名 profile = 持久化上下文：cookie / localStorage / IndexedDB / HTTP 缓存
+        // 都落盘到 <cache>/cast，重启后登录态和站点数据还在。
+        'profileName': 'cast',
         'javascriptChannels': '{}',
         'canvasMode': true,
         'canvasWidth': width,
         'canvasHeight': height,
+        'frameRate': s.frameRate,
         'presenters': presenters,
       });
       final id = result?['browserId'] as int?;
+      final textureId = result?['textureId'] as int?;
       final shown = result?['presenters'] as int? ?? 0;
       if (id == null) {
         lastError = l10n.castNoBrowserHandle;
@@ -148,12 +199,15 @@ class CastCanvas {
         return false;
       }
       _browserId = id;
+      _textureId = textureId != null && textureId >= 0 ? textureId : null;
       _layoutKey = key;
+      _frameRate = s.frameRate;
       _screens = shown;
       _screenIds = ids;
       _layout = layout;
       _installEvents();
-      EnodeLog.i('cast', '画布浏览器已创建 browserId=$id 屏数=$shown 布局=${width}x$height');
+      if (_previewOn) unawaited(_applyPreview());
+      EnodeLog.i('cast', '画布浏览器已创建 browserId=$id 屏数=$shown 布局=${width}x$height 帧率=${s.frameRate}');
       // 页面加载完会再整份重放；这里先排一次，页面已就绪时就不用等。
       unawaited(_eval('window.enodeCanvas.layout(${jsonEncode(layout)});'));
       return true;
@@ -189,10 +243,73 @@ class CastCanvas {
     await _push({'style': _style});
   }
 
+  /// 改渲染帧率。一块画布只有一个浏览器，帧率天然全局（OBS 的浏览器源同理，
+  /// 不能按素材分开）；CEF 内部按这个上限回调 paint，超出的帧直接丢。
+  Future<void> applyFrameRate(int fps) async {
+    final id = _browserId;
+    if (id == null || fps == _frameRate) return;
+    try {
+      await _channel.invokeMethod<void>('setFrameRate', {'browserId': id, 'fps': fps});
+      _frameRate = fps;
+    } catch (e) {
+      // 浏览器刚被重建/销毁时通道里已经没有它；下一次 ensure 会带上新帧率。
+      EnodeLog.d('cast', '设置帧率失败：$e');
+    }
+  }
+
   /// 每块屏的素材叠层：切屏/拖位置/改层级/换素材都走这里。
   Future<void> applyComposition(CastSettings s, List<CastMonitor> monitors) async {
     _composition = castWebScreens(s, monitors);
     await _compose();
+  }
+
+  /// 打开某网址素材的"交互窗口"：普通桌面窗口实时镜像该素材在画布上的区域，
+  /// 鼠标/键盘按坐标反算注入同一个 CEF 实例——窗口里看到的、操作的就是投放出去
+  /// 的画面（投放屏在远处人看不到时的遥控器）。返回 false 时 [lastError] 有原因。
+  Future<bool> openMirror(CastMaterial material, CastSettings s, List<CastMonitor> monitors) async {
+    final browserId = _browserId;
+    if (browserId == null || _canvasWidth <= 0 || _canvasHeight <= 0) {
+      lastError = l10n.castMirrorNeedsCasting;
+      return false;
+    }
+    final rect = urlMirrorCanvasRect(s, _screenIds, _layout, material.id);
+    if (rect == null) {
+      lastError = l10n.castMirrorNeedsCasting;
+      return false;
+    }
+    // 窗口大小跟素材宽高比走：宽撑到 1280，高不超过 900，再兜个最小尺寸。
+    final ratio = rect.height / rect.width;
+    final width = math.max(320, math.min(1280, rect.width).round());
+    final height = math.max(240, math.min(900, (width * ratio).round()));
+    final u0 = rect.left / _canvasWidth;
+    final v0 = rect.top / _canvasHeight;
+    final u1 = rect.right / _canvasWidth;
+    final v1 = rect.bottom / _canvasHeight;
+    try {
+      await _channel.invokeMethod('openMirrorWindow', {
+        'browserId': browserId,
+        'key': material.id,
+        'title': l10n.urlInteractWindowTitle(_mirrorDisplayName(material)),
+        'width': width,
+        'height': height,
+        'u0': u0,
+        'v0': v0,
+        'u1': u1,
+        'v1': v1,
+        'canvasWidth': _canvasWidth,
+        'canvasHeight': _canvasHeight,
+      });
+      EnodeLog.i('cast', '交互窗口已开 ${material.name} rect=${rect.left.round()},${rect.top.round()}'
+          '${rect.width.round()}x${rect.height.round()}');
+      return true;
+    } on PlatformException catch (e) {
+      lastError = e.message ?? e.code;
+      EnodeLog.w('cast', '交互窗口打开失败：${e.code} ${e.message}');
+      return false;
+    } catch (e) {
+      lastError = '$e';
+      return false;
+    }
   }
 
   Future<void> _compose() async {
@@ -220,11 +337,15 @@ class CastCanvas {
   Future<void> stop() async {
     final id = _browserId;
     _browserId = null;
+    _textureId = null;
     _layoutKey = '';
+    _frameRate = 0;
     _screens = 0;
     _screenIds = const [];
     _layout = const [];
     _composition = const [];
+    _canvasWidth = 0;
+    _canvasHeight = 0;
     if (id == null) return;
     await _dispose(id);
     // 注意：这里**不**重新初始化 CEF。原生 disposeBrowser 只是从 browsers_ 表里
@@ -338,4 +459,37 @@ class _Tile {
 
   /// presenter 窗口的物理像素矩形。
   final Rect physical;
+}
+
+/// 素材在画布上的像素矩形（镜像窗口的裁剪与输入映射基准），找不到可见投放项
+/// 时返回 null。`screenIds` 与 `layout` 同序，layout 每项是 {x,y,w,h,k}（画布 px）；
+/// 投放几何用百分比，与 screen.html 渲染用的是同一套换算。
+Rect? urlMirrorCanvasRect(
+  CastSettings s,
+  List<String> screenIds,
+  List<Map<String, Object?>> layout,
+  String materialId,
+) {
+  for (var i = 0; i < screenIds.length && i < layout.length; i++) {
+    for (final p in s.placementsOn(screenIds[i])) {
+      if (p.materialId != materialId || !p.visible) continue;
+      final x = numTry(layout[i]['x']) ?? 0;
+      final y = numTry(layout[i]['y']) ?? 0;
+      final w = numTry(layout[i]['w']) ?? 0;
+      final h = numTry(layout[i]['h']) ?? 0;
+      if (w <= 0 || h <= 0) continue;
+      return Rect.fromLTWH(x + p.x * w, y + p.y * h, p.width * w, p.height * h);
+    }
+  }
+  return null;
+}
+
+double? numTry(Object? v) => v is num ? v.toDouble() : null;
+
+/// 镜像窗口标题里的名字：优先素材名，退回网址 host，再退回整条网址。
+String _mirrorDisplayName(CastMaterial m) {
+  final name = m.name.trim();
+  if (name.isNotEmpty) return name;
+  final host = Uri.tryParse(m.url.trim())?.host ?? '';
+  return host.isNotEmpty ? host : m.url.trim();
 }

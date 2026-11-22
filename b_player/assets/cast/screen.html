@@ -22,6 +22,10 @@
   body { -webkit-user-select: none; cursor: default; }
   #screen { position: absolute; inset: 0; overflow: hidden; }
   .item { position: absolute; overflow: hidden; box-sizing: border-box; }
+  /* 除网址外的素材都是纯装饰：歌词/文字/图片铺满时不能接住鼠标，否则盖住的
+     网址 iframe 永远收不到点击（交互窗里点不动就是这个原因）。pointer-events
+     是可继承属性，父节点一关，子元素全跟着穿透。 */
+  .item:not(.url) { pointer-events: none; }
   .item.lyric { display: flex; }
   .ly { width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; box-sizing: border-box; }
   .ly .rows { width: 100%; display: flex; flex-direction: column; }
@@ -465,6 +469,7 @@
       return;
     }
     attach(node.el, f);
+    fitUrlViewport(node);
     // rev 变换 = 用户在设置页点了「重新载入」：同一条网址也要丢掉旧 document 再拉一次。
     if (node.url.loaded !== src || node.url.loadedRev !== num(it.rev, 0)) {
       node.url.loaded = src;
@@ -476,6 +481,26 @@
         try { f.setAttribute('src', src); } catch (e) {}
       }, sec * 1000) : null;
     }
+  }
+
+  // 网页视口：设了 vw×vh 就让 iframe 按这个尺寸排版，再整体等比缩放居中放进
+  // 投放框（CSS transform 不改变 iframe 的布局视口，页面里的 innerWidth 仍是
+  // vw）。没设就沿用旧行为：视口 = 投放框，页面自己响应式重排。
+  function fitUrlViewport(node) {
+    var it = node.item, f = node.url.frame;
+    var vw = num(it.vw, 0), vh = num(it.vh, 0);
+    var W = node.el.clientWidth, H = node.el.clientHeight;
+    if (!(vw > 0 && vh > 0) || !(W > 0 && H > 0)) {
+      f.style.width = '100%';
+      f.style.height = '100%';
+      f.style.transform = 'none';
+      return;
+    }
+    var s = Math.min(W / vw, H / vh);
+    f.style.width = vw + 'px';
+    f.style.height = vh + 'px';
+    f.style.transformOrigin = '0 0';
+    f.style.transform = 'translate(' + ((W - vw * s) / 2) + 'px,' + ((H - vh * s) / 2) + 'px) scale(' + s + ')';
   }
 
   function renderNode(node) {

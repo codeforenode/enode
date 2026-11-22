@@ -1571,6 +1571,13 @@ class AppL10nZh extends AppL10n {
   String get screenScreenHint => '點選一台螢幕開始排版';
 
   @override
+  String get screenPrimaryBadge => '主螢幕';
+
+  @override
+  String get screenMonitorHint =>
+      '「主螢幕」由 Windows 指定；型號讀自顯示器 EDID，同款螢幕請看左右擺放位置區分。';
+
+  @override
   String screenLayersCount(int count) {
     return '$count 個圖層';
   }
@@ -1761,7 +1768,30 @@ class AppL10nZh extends AppL10n {
   String get screenReload => '重新載入';
 
   @override
+  String get screenUrlInteract => '互動視窗';
+
+  @override
+  String urlInteractWindowTitle(String name) {
+    return '網頁互動 · $name';
+  }
+
+  @override
+  String get castMirrorNeedsCasting => '請先勾選螢幕開始投放，互動視窗才能開啟。';
+
+  @override
   String get screenRefresh => '刷新間隔';
+
+  @override
+  String get screenPageSize => '頁面尺寸';
+
+  @override
+  String get screenPageSizeHint => '瀏覽器按這個尺寸排版，再等比縮放進投放框；兩項留空 = 跟隨投放框。';
+
+  @override
+  String get screenFrameRate => '更新率';
+
+  @override
+  String get screenFrameRateHint => '整塊畫布共用一個更新率（與 OBS 一樣不能按素材分開），調整後立即生效。';
 
   @override
   String get screenSeconds => '秒';
@@ -3752,6 +3782,12 @@ class AppL10nZhHans extends AppL10nZh {
   String get screenScreenHint => '点选一台屏幕开始排版';
 
   @override
+  String get screenPrimaryBadge => '主屏';
+
+  @override
+  String get screenMonitorHint => '「主屏」由 Windows 指定；型号读自显示器 EDID，同款屏幕请按左右位置区分。';
+
+  @override
   String screenLayersCount(int count) {
     return '$count 个图层';
   }
@@ -3942,7 +3978,30 @@ class AppL10nZhHans extends AppL10nZh {
   String get screenReload => '重新加载';
 
   @override
+  String get screenUrlInteract => '交互窗口';
+
+  @override
+  String urlInteractWindowTitle(String name) {
+    return '网页交互 · $name';
+  }
+
+  @override
+  String get castMirrorNeedsCasting => '请先勾选屏幕开始投放，交互窗口才能开启。';
+
+  @override
   String get screenRefresh => '刷新间隔';
+
+  @override
+  String get screenPageSize => '页面尺寸';
+
+  @override
+  String get screenPageSizeHint => '浏览器按这个尺寸排版，再等比缩放进投放框；两项留空 = 跟随投放框。';
+
+  @override
+  String get screenFrameRate => '刷新率';
+
+  @override
+  String get screenFrameRateHint => '整块画布共用一个刷新率（与 OBS 一样不能按素材分开），调整后立即生效。';
 
   @override
   String get screenSeconds => '秒';
@@ -5934,6 +5993,13 @@ class AppL10nZhHant extends AppL10nZh {
   String get screenScreenHint => '點選一台螢幕開始排版';
 
   @override
+  String get screenPrimaryBadge => '主螢幕';
+
+  @override
+  String get screenMonitorHint =>
+      '「主螢幕」由 Windows 指定；型號讀自顯示器 EDID，同款螢幕請看左右擺放位置區分。';
+
+  @override
   String screenLayersCount(int count) {
     return '$count 個圖層';
   }
@@ -6124,7 +6190,30 @@ class AppL10nZhHant extends AppL10nZh {
   String get screenReload => '重新載入';
 
   @override
+  String get screenUrlInteract => '互動視窗';
+
+  @override
+  String urlInteractWindowTitle(String name) {
+    return '網頁互動 · $name';
+  }
+
+  @override
+  String get castMirrorNeedsCasting => '請先勾選螢幕開始投放，互動視窗才能開啟。';
+
+  @override
   String get screenRefresh => '刷新間隔';
+
+  @override
+  String get screenPageSize => '頁面尺寸';
+
+  @override
+  String get screenPageSizeHint => '瀏覽器按這個尺寸排版，再等比縮放進投放框；兩項留空 = 跟隨投放框。';
+
+  @override
+  String get screenFrameRate => '更新率';
+
+  @override
+  String get screenFrameRateHint => '整塊畫布共用一個更新率（與 OBS 一樣不能按素材分開），調整後立即生效。';
 
   @override
   String get screenSeconds => '秒';

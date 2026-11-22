@@ -558,6 +558,8 @@
   "screenScreens": "螢幕",
   "screenCount": "{count} 台",
   "screenScreenHint": "點選一台螢幕開始排版",
+  "screenPrimaryBadge": "主螢幕",
+  "screenMonitorHint": "「主螢幕」由 Windows 指定；型號讀自顯示器 EDID，同款螢幕請看左右擺放位置區分。",
   "screenLayersCount": "{count} 個圖層",
   "screenUrlBadge": "網頁 {count}",
   "screenVideoBadge": "影片 {count}",
@@ -614,7 +616,19 @@
   "screenUrlPlaceholder": "https://…",
   "screenUrlReloadHint": "改網址或按重新載入才會刷新。",
   "screenReload": "重新載入",
+  "screenUrlInteract": "互動視窗",
+  "urlInteractWindowTitle": "網頁互動 · {name}",
+  "@urlInteractWindowTitle": {
+    "placeholders": {
+      "name": {"type": "String"}
+    }
+  },
+  "castMirrorNeedsCasting": "請先勾選螢幕開始投放，互動視窗才能開啟。",
   "screenRefresh": "刷新間隔",
+  "screenPageSize": "頁面尺寸",
+  "screenPageSizeHint": "瀏覽器按這個尺寸排版，再等比縮放進投放框；兩項留空 = 跟隨投放框。",
+  "screenFrameRate": "更新率",
+  "screenFrameRateHint": "整塊畫布共用一個更新率（與 OBS 一樣不能按素材分開），調整後立即生效。",
   "screenSeconds": "秒",
   "screenUrlEmbedNote": "對方網站若禁止嵌入（X-Frame-Options / CSP），畫面會空白；可改用圖片或影片素材。",
   "screenUrlPreviewHint": "投放時在這裡顯示網頁",

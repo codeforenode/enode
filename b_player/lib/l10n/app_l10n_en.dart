@@ -1621,6 +1621,13 @@ class AppL10nEn extends AppL10n {
   String get screenScreenHint => 'Pick a screen to start laying out';
 
   @override
+  String get screenPrimaryBadge => 'Main';
+
+  @override
+  String get screenMonitorHint =>
+      'Windows picks the main display; the model comes from monitor EDID — tell identical monitors apart by their left/right position.';
+
+  @override
   String screenLayersCount(int count) {
     return '$count layers';
   }
@@ -1818,7 +1825,33 @@ class AppL10nEn extends AppL10n {
   String get screenReload => 'Reload';
 
   @override
+  String get screenUrlInteract => 'Interactive window';
+
+  @override
+  String urlInteractWindowTitle(String name) {
+    return 'Web interact · $name';
+  }
+
+  @override
+  String get castMirrorNeedsCasting =>
+      'Select a screen and start casting to open the interactive window.';
+
+  @override
   String get screenRefresh => 'Refresh';
+
+  @override
+  String get screenPageSize => 'Page size';
+
+  @override
+  String get screenPageSizeHint =>
+      'The page lays out at this size, then scales uniformly into the cast box; leave both empty to follow the box.';
+
+  @override
+  String get screenFrameRate => 'Frame rate';
+
+  @override
+  String get screenFrameRateHint =>
+      'One frame rate for the whole canvas (like OBS, it cannot vary per material); applies immediately.';
 
   @override
   String get screenSeconds => 'sec';

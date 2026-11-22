@@ -14,6 +14,9 @@ import 'dart:ui' show Rect;
 
 import 'package:ffi/ffi.dart';
 
+/// MONITORINFOF_PRIMARY。
+const _monitorInfoPrimary = 0x1;
+
 final class _MonitorInfoExW extends Struct {
   @Uint32()
   external int cbSize;
@@ -53,10 +56,41 @@ typedef _MonitorEnumProcNative = Int32 Function(
 typedef _GetMonitorInfoNative = Int32 Function(IntPtr hMonitor, Pointer<_MonitorInfoExW> lpmi);
 typedef _GetMonitorInfoDart = int Function(int hMonitor, Pointer<_MonitorInfoExW> lpmi);
 
+/// DISPLAY_DEVICEW。只要 DeviceString（显示器型号），后面的字段不能省——
+/// 结构体小了 API 会写到分配区外。
+final class _DisplayDeviceW extends Struct {
+  @Uint32()
+  external int cb;
+
+  @Array.multi([32])
+  external Array<Uint16> deviceName;
+
+  @Array.multi([128])
+  external Array<Uint16> deviceString;
+
+  @Uint32()
+  external int stateFlags;
+
+  @Array.multi([128])
+  external Array<Uint16> deviceId;
+
+  @Array.multi([128])
+  external Array<Uint16> deviceKey;
+}
+
+typedef _EnumDisplayDevicesNative = Int32 Function(
+    Pointer<Utf16> lpDevice, Uint32 iDevNum, Pointer<_DisplayDeviceW> lpDisplayDevice, Uint32 dwFlags);
+typedef _EnumDisplayDevicesDart = int Function(
+    Pointer<Utf16> lpDevice, int iDevNum, Pointer<_DisplayDeviceW> lpDisplayDevice, int dwFlags);
+
 final List<Rect> _monitorRects = [];
 final List<Rect> _workRects = [];
+final List<bool> _primaryFlags = [];
+final List<String> _deviceNames = [];
 
-int _collectMonitor(int hdc, int hMonitor, Pointer<Void> lprcMonitor, int lParam) {
+// MonitorEnumProc 的参数顺序是 (hMonitor, hdcMonitor, lprcMonitor, lpData)；
+// 前两个都是句柄，位置写反不会报错，只会让 GetMonitorInfo 失败、静默回退到逻辑坐标。
+int _collectMonitor(int hMonitor, int hdcMonitor, Pointer<Void> lprcMonitor, int lParam) {
   final info = calloc<_MonitorInfoExW>();
   try {
     info.ref.cbSize = sizeOf<_MonitorInfoExW>();
@@ -72,9 +106,39 @@ int _collectMonitor(int hdc, int hMonitor, Pointer<Void> lprcMonitor, int lParam
         info.ref.workTop.toDouble(),
         info.ref.workRight.toDouble(),
         info.ref.workBottom.toDouble()));
+    _primaryFlags.add(info.ref.dwFlags & _monitorInfoPrimary != 0);
+    _deviceNames.add(_utf16(info.ref.szDevice, 32));
     return 1;
   } finally {
     calloc.free(info);
+  }
+}
+
+String _utf16(Array<Uint16> chars, int max) {
+  final sb = StringBuffer();
+  for (var i = 0; i < max; i++) {
+    final c = chars[i];
+    if (c == 0) break;
+    sb.writeCharCode(c);
+  }
+  return sb.toString();
+}
+
+/// 显示器型号：先问 EDID 解析出来的名字（「DELL U2415」），驱动不报时是
+/// 「Generic PnP Monitor」——Windows 没有可靠的「内置屏 / 外接屏」标志，只能这么标识。
+String _monitorModel(String deviceName, _EnumDisplayDevicesDart? enumDevices) {
+  if (deviceName.isEmpty || enumDevices == null) return '';
+  final name = deviceName.toNativeUtf16();
+  final dd = calloc<_DisplayDeviceW>();
+  try {
+    dd.ref.cb = sizeOf<_DisplayDeviceW>();
+    if (enumDevices(name, 0, dd, 0) == 0) return '';
+    return _utf16(dd.ref.deviceString, 128);
+  } catch (_) {
+    return '';
+  } finally {
+    calloc.free(dd);
+    malloc.free(name);
   }
 }
 
@@ -86,18 +150,30 @@ _GetMonitorInfoDart _getMonitorInfo() {
 }
 
 class PhysicalMonitorRects {
-  const PhysicalMonitorRects(this.monitor, this.work);
+  const PhysicalMonitorRects(this.monitor, this.work,
+      {this.primary = false, this.device = '', this.model = ''});
 
   /// 整个显示器的物理矩形（含任务栏）。
   final Rect monitor;
 
   /// 工作区的物理矩形。
   final Rect work;
+
+  /// 是不是 Windows 的「主显示器」（任务栏默认所在的那块）。
+  final bool primary;
+
+  /// GDI 设备名，如 `\\.\DISPLAY1`。
+  final String device;
+
+  /// EDID 型号串；驱动不报时为 `Generic PnP Monitor`，取不到时为空。
+  final String model;
 }
 
 List<PhysicalMonitorRects> physicalMonitorRects() {
   _monitorRects.clear();
   _workRects.clear();
+  _primaryFlags.clear();
+  _deviceNames.clear();
   try {
     final enumDisplayMonitors = DynamicLibrary.open('user32.dll')
         .lookupFunction<_EnumDisplayMonitorsNative, _EnumDisplayMonitorsDart>(
@@ -107,9 +183,19 @@ List<PhysicalMonitorRects> physicalMonitorRects() {
     // 拿不到就回退：调用方用「逻辑 × 缩放」换算。
     return const [];
   }
+  _EnumDisplayDevicesDart? enumDevices;
+  try {
+    enumDevices = DynamicLibrary.open('user32.dll')
+        .lookupFunction<_EnumDisplayDevicesNative, _EnumDisplayDevicesDart>('EnumDisplayDevicesW');
+  } catch (_) {
+    enumDevices = null;
+  }
   return [
     for (var i = 0; i < _monitorRects.length; i++)
-      PhysicalMonitorRects(_monitorRects[i], _workRects[i]),
+      PhysicalMonitorRects(_monitorRects[i], _workRects[i],
+          primary: _primaryFlags[i],
+          device: _deviceNames[i],
+          model: _monitorModel(_deviceNames[i], enumDevices)),
   ];
 }
 

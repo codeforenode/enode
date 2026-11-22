@@ -212,7 +212,10 @@ class _SettingsPageState extends State<_SettingsPage> {
   Widget _pane(AppL10n t) => switch (_tab) {
         _Tab.cast => Padding(
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-            child: ScreenCastPanel(state: widget.state),
+            child: ScreenCastPanel(
+              state: widget.state,
+              onOpenUrlInteract: (m) => unawaited(widget.state.openUrlInteractWindow(m)),
+            ),
           ),
         _Tab.display => _scrolled(
             ConstrainedBox(

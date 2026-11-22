@@ -21,8 +21,12 @@ import 'image_path_picker.dart';
 /// 一次改動立刻寫進 cast.settings.v2（拖動這類高頻操作攢 250ms）；
 /// 投放窗讀的是同一份，所以不需要另外按保存。
 class ScreenCastPanel extends StatefulWidget {
-  const ScreenCastPanel({super.key, required this.state});
+  const ScreenCastPanel({super.key, required this.state, this.onOpenUrlInteract});
   final AppState state;
+
+  /// 打開網址素材的互動窗。null（預設）時按鈕禁用——生產由 settings_dialog 注入
+  /// 真實實現，測試注入樁，避免 widget 測試真的去 spawn 視窗。
+  final void Function(CastMaterial material)? onOpenUrlInteract;
 
   @override
   State<ScreenCastPanel> createState() => _ScreenCastPanelState();
@@ -71,6 +75,8 @@ class _ScreenCastPanelState extends State<ScreenCastPanel> {
     _placementId = _pickPlacement();
     _syncAll();
     widget.state.addListener(_onApp);
+    // 编辑区直接看画布本体的纹理（裁剪到当前屏），只在屏幕管理开着时收帧。
+    unawaited(widget.state.setCastPreview(true));
     _startDemoClock();
     _uiTick = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
@@ -80,6 +86,7 @@ class _ScreenCastPanelState extends State<ScreenCastPanel> {
   @override
   void dispose() {
     widget.state.removeListener(_onApp);
+    unawaited(widget.state.setCastPreview(false));
     _debounce?.cancel();
     _demoTick?.cancel();
     _uiTick?.cancel();
@@ -383,8 +390,15 @@ class _ScreenCastPanelState extends State<ScreenCastPanel> {
 
   CastMaterial _newMaterial(CastMaterialType type, String name) => switch (type) {
         CastMaterialType.lyric => CastMaterial(id: newCastId('m'), type: type, name: name),
-        CastMaterialType.url =>
-          CastMaterial(id: newCastId('m'), type: type, name: name, url: 'https://'),
+        CastMaterialType.url => CastMaterial(
+            id: newCastId('m'),
+            type: type,
+            name: name,
+            url: 'https://',
+            // 网址素材默认按 1080p 网页排版，与常见投屏素材一致；清空 = 跟随投放框。
+            viewportW: 1920,
+            viewportH: 1080,
+          ),
         CastMaterialType.image => CastMaterial(
             id: newCastId('m'), type: type, name: name, fit: CastFit.cover),
         CastMaterialType.video => CastMaterial(
@@ -800,6 +814,8 @@ class _ScreenCastPanelState extends State<ScreenCastPanel> {
             child: Column(children: [
               for (var i = 0; i < _monitors.length; i++) _screenCard(t, _monitors[i], i + 1),
               Text(t.screenScreenHint, style: kMini),
+              const SizedBox(height: 3),
+              Text(t.screenMonitorHint, style: kMini),
             ]),
           ),
           const SizedBox(height: 10),
@@ -901,11 +917,20 @@ class _ScreenCastPanelState extends State<ScreenCastPanel> {
                   const SizedBox(width: 7),
                   Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(m.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: C.txt)),
+                      Row(children: [
+                        Flexible(
+                          child: Text(m.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: C.txt)),
+                        ),
+                        if (m.primary) ...[
+                          const SizedBox(width: 4),
+                          _miniChip(t.screenPrimaryBadge, C.acc),
+                        ],
+                      ]),
                       Text(
+                        '${m.model.isNotEmpty ? '${m.model} · ' : ''}'
                         '${m.fullSize.width.round()}×${m.fullSize.height.round()} · ${(m.scale * 100).round()}% · '
                         '${target.mode == CastMode.fullscreen ? t.screenFull : t.screenWork}',
                         maxLines: 1,
@@ -1252,6 +1277,11 @@ class _ScreenCastPanelState extends State<ScreenCastPanel> {
       final width = c.maxWidth;
       final height = width / ratio;
       final stage = Size(width, height);
+      // 编辑区预览：投放中且有本屏画布矩形时，直接显示画布纹理的这一块。
+      final tex = widget.state.castPreviewTextureId;
+      final canvas = widget.state.castCanvasSize;
+      final crop = widget.state.castScreenCanvasRect(mon.id);
+      final live = tex != null && canvas != null && crop != null && crop.width >= 1 && crop.height >= 1;
       return DragTarget<CastMaterial>(
         onAcceptWithDetails: (d) {
           final box = _stageKey.currentContext?.findRenderObject() as RenderBox?;
@@ -1279,12 +1309,13 @@ class _ScreenCastPanelState extends State<ScreenCastPanel> {
               // 透明底色时预览出来就是一块棋盘，和右侧的透明色块口径一致。
               if ((target.backgroundColor >>> 24) == 0)
                 CustomPaint(painter: const _CheckerPainter(cell: 12)),
+              if (live) _liveTexture(tex, canvas, crop, width),
               // 单独成层：拖素材时只重绘画布，不带着整个设置页一起重绘。
               RepaintBoundary(
                 child: ValueListenableBuilder<_LiveDrag>(
                   valueListenable: _liveDrag,
-                  builder: (context, live, _) {
-                    final liveP = live.placement;
+                  builder: (context, liveDrag, _) {
+                    final liveP = liveDrag.placement;
                     final placements = [
                       for (final p in _draft.placementsOn(mon.id))
                         liveP != null && liveP.id == p.id ? liveP : p,
@@ -1298,7 +1329,10 @@ class _ScreenCastPanelState extends State<ScreenCastPanel> {
                             top: p.y * height,
                             width: math.max(1, p.width * width),
                             height: math.max(1, p.height * height),
-                            child: _box(t, p, stage),
+                            // 画面由画布纹理提供；只有正在拖的那块跟手自绘，
+                            // 其余只留边框做选中反馈，避免和纹理里的画面叠影。
+                            child: _box(t, p, stage,
+                                chromeOnly: live && (liveP == null || liveP.id != p.id)),
                           ),
                       if (selected != null && selected.visible && selected.screenId == mon.id)
                         _selectionOverlay(selected, stage),
@@ -1313,7 +1347,26 @@ class _ScreenCastPanelState extends State<ScreenCastPanel> {
     });
   }
 
-  Widget _box(AppL10n t, CastPlacement p, Size stage) {
+  /// 把画布纹理裁到本屏：纹理是整块画布（多屏并集），按本屏在画布里的矩形
+  /// 平移缩放后塞进舞台，裁掉其他屏的部分。
+  Widget _liveTexture(int id, Size canvas, Rect crop, double width) {
+    final s = width / crop.width;
+    return Positioned.fill(
+      child: ClipRect(
+        child: Stack(clipBehavior: Clip.none, children: [
+          Positioned(
+            left: -crop.left * s,
+            top: -crop.top * s,
+            width: canvas.width * s,
+            height: canvas.height * s,
+            child: Texture(textureId: id),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _box(AppL10n t, CastPlacement p, Size stage, {bool chromeOnly = false}) {
     final m = _draft.materialById(p.materialId);
     if (m == null) return const SizedBox.shrink();
     final selected = p.id == _placementId;
@@ -1323,9 +1376,11 @@ class _ScreenCastPanelState extends State<ScreenCastPanel> {
             ? Border.all(color: Colors.white.withValues(alpha: .16))
             : (selected ? Border.all(color: C.acc, width: 1.4) : null),
       ),
-      child: ClipRect(
-        child: Opacity(opacity: p.opacity, child: _boxInner(t, m, p, stage)),
-      ),
+      child: chromeOnly
+          ? null
+          : ClipRect(
+              child: Opacity(opacity: p.opacity, child: _boxInner(t, m, p, stage)),
+            ),
     );
     return RepaintBoundary(
       child: MouseRegion(
@@ -2139,6 +2194,12 @@ class _ScreenCastPanelState extends State<ScreenCastPanel> {
     ];
   }
 
+  /// 网址够不够格开交互窗：非空，也不是新增素材的占位预设。
+  bool _urlOpenable(String url) {
+    final u = url.trim();
+    return u.isNotEmpty && u != 'https://';
+  }
+
   List<Widget> _urlSections(AppL10n t, CastMaterial m, CastPlacement p) => [
         _section(title: t.screenSectionUrl, trailing: t.screenEmbedPage, children: [
           _textField('url', m.url,
@@ -2147,11 +2208,56 @@ class _ScreenCastPanelState extends State<ScreenCastPanel> {
           const SizedBox(height: 7),
           Row(children: [
             Expanded(child: Text(t.screenUrlReloadHint, style: kMini)),
+            // 互動窗：投放屏是穿透面點不了，這裡開一扇普通窗讓頁面能點能輸入。
+            // 'https://' 是新增素材的佔位預設值，跟空串一樣不算可打開。
+            _ghost(
+              t.screenUrlInteract,
+              _urlOpenable(m.url) ? () => widget.onOpenUrlInteract?.call(m) : null,
+            ),
+            const SizedBox(width: 5),
             _ghost(t.screenReload, () {
               _editMaterial(m.id, (x) => x.copyWith(rev: x.rev + 1));
             }),
           ]),
           const SizedBox(height: 6),
+          _row(
+            t.screenPageSize,
+            Row(children: [
+              SizedBox(
+                width: 64,
+                child: _textField(
+                  'vw',
+                  m.viewportW > 0 ? '${m.viewportW}' : '',
+                  (v) {
+                    final n = int.tryParse(v.trim()) ?? 0;
+                    _editMaterial(m.id, (x) => x.copyWith(viewportW: n.clamp(0, 10000)));
+                  },
+                  hint: '1920',
+                  keyboard: TextInputType.number,
+                ),
+              ),
+              const SizedBox(width: 5),
+              Text('×', style: kMini),
+              const SizedBox(width: 5),
+              SizedBox(
+                width: 64,
+                child: _textField(
+                  'vh',
+                  m.viewportH > 0 ? '${m.viewportH}' : '',
+                  (v) {
+                    final n = int.tryParse(v.trim()) ?? 0;
+                    _editMaterial(m.id, (x) => x.copyWith(viewportH: n.clamp(0, 10000)));
+                  },
+                  hint: '1080',
+                  keyboard: TextInputType.number,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text('px', style: kMini),
+            ]),
+          ),
+          _note(Icons.aspect_ratio_rounded, t.screenPageSizeHint),
+          const SizedBox(height: 4),
           _row(
             t.screenRefresh,
             Row(children: [
@@ -2455,11 +2561,20 @@ class _ScreenCastPanelState extends State<ScreenCastPanel> {
         const SizedBox(width: 7),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(mon.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: C.txt)),
+            Row(children: [
+              Flexible(
+                child: Text(mon.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: C.txt)),
+              ),
+              if (mon.primary) ...[
+                const SizedBox(width: 5),
+                _miniChip(t.screenPrimaryBadge, C.acc),
+              ],
+            ]),
             Text(
+              '${mon.model.isNotEmpty ? '${mon.model} · ' : ''}'
               '${mon.fullSize.width.round()}×${mon.fullSize.height.round()} · ${(mon.scale * 100).round()}% · '
               '${t.screenLayersCount(placements.length)}',
               style: kNums.copyWith(fontSize: 9.8, color: C.faint),
@@ -2584,6 +2699,10 @@ class _ScreenCastPanelState extends State<ScreenCastPanel> {
           const SizedBox(width: 5),
           _kv(t.screenPerfAudio, '$audio'),
         ]),
+        const SizedBox(height: 6),
+        _sliderRow(t.screenFrameRate, _draft.frameRate.toDouble(), 24, 60, 36, 'fps',
+            (v) => _edit((s) => s.copyWith(frameRate: v.round()))),
+        _note(Icons.speed_rounded, t.screenFrameRateHint),
         const SizedBox(height: 6),
         Text(t.screenPerfHint, style: kMini),
       ]),

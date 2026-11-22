@@ -66,12 +66,19 @@ FlutterChromiumWebviewPlugin::~FlutterChromiumWebviewPlugin() {
   }
   CloseAll();
   keyboard_.reset();
+  CefRuntimeManager::GetInstance()->SetPumpHook({});
   CefRuntimeManager::GetInstance()->Shutdown();
   FlutterDesktopMessengerRelease(messenger_);
 }
 
 void FlutterChromiumWebviewPlugin::CloseAll(std::function<void()> done) {
   if (keyboard_) keyboard_->SetBrowser(nullptr);
+  // Mirror windows hold their own browser reference; they must go before the
+  // handlers close so nothing keeps a closing browser alive.
+  for (auto& pair : browsers_) {
+    static_cast<CefBrowserHandler*>(pair.second)->SetMirror(nullptr);
+  }
+  mirrors_.clear();
   auto browsers = std::move(browsers_);
   browsers_.clear();
   if (browsers.empty()) { if (done) done(); return; }
@@ -82,6 +89,19 @@ void FlutterChromiumWebviewPlugin::CloseAll(std::function<void()> done) {
       if (--*remaining == 0 && done) done();
     });
     handler->Release();
+  }
+}
+
+void FlutterChromiumWebviewPlugin::FeedMirrors() {
+  for (auto& pair : mirrors_) {
+    auto it = browsers_.find(pair.first);
+    if (it == browsers_.end()) continue;
+    // Only the very first frame comes from here: an interaction window opened
+    // on a settled page gets no paint callback, so PresentAllQueued would have
+    // nothing to show. Live frames arrive via OnAcceleratedPaint.
+    if (pair.second->HasFrame()) continue;
+    auto* handler = static_cast<CefBrowserHandler*>(it->second);
+    pair.second->QueueFrame(handler->CanvasTexture());
   }
 }
 
@@ -136,7 +156,11 @@ void FlutterChromiumWebviewPlugin::HandleMethodCall(
                     std::to_string(runtime->initialization_exit_code()));
       return;
     }
-    runtime->SetPumpHook(&CanvasPresenterSet::PresentAllQueued);
+    runtime->SetPumpHook([this] {
+      FeedMirrors();
+      CanvasPresenterSet::PresentAllQueued();
+      CanvasMirrorSet::PresentAllQueued();
+    });
     if (!session_id_.empty() && session == session_id_) {
       result->Success(flutter::EncodableValue(true));
       return;
@@ -258,7 +282,10 @@ void FlutterChromiumWebviewPlugin::HandleMethodCall(
     info.SetAsWindowless(registrar_->GetView() ? registrar_->GetView()->GetNativeWindow() : nullptr);
     info.shared_texture_enabled = accelerated ? 1 : 0;
     CefBrowserSettings settings;
-    settings.windowless_frame_rate = 60;
+    // windowless_frame_rate is the ceiling for OSR paint callbacks; the canvas
+    // exposes it as the cast frame rate setting (OBS browser source FPS).
+    const int nominal_fps = static_cast<int>(GetNumber(args, "frameRate", 60));
+    settings.windowless_frame_rate = nominal_fps < 10 ? 10 : (nominal_fps > 60 ? 60 : nominal_fps);
     settings.background_color = 0;
     
     std::string initialUrl = GetValue<std::string>(args, "initialUrl", "about:blank");
@@ -267,6 +294,40 @@ void FlutterChromiumWebviewPlugin::HandleMethodCall(
     auto context = chromium_settings::CustomContext(requires_gesture, profile_name);
     if (!requires_gesture && !context) {
       handler->Close(); result->Error("SETTINGS_FAILED", "Could not create a private autoplay context"); return;
+    }
+    if (context && !context->IsGlobal()) {
+      // A fresh persistent profile finishes initializing on the message loop.
+      // CreateBrowserSync would hold that loop and the browser would never be
+      // created, so this path reports back from OnAfterCreated instead.
+      auto deferred = std::shared_ptr<flutter::MethodResult<flutter::EncodableValue>>(std::move(result));
+      handler->SetCreatedCallback(
+          [this, handler, browser_id, texture_id, popup_texture_id, presenter_count,
+           requires_gesture, context, deferred]() {
+            std::string settings_error;
+            if (!requires_gesture && !chromium_settings::AllowAutoplay(handler->GetBrowser(), settings_error)) {
+              handler->Close();
+              deferred->Error("SETTINGS_FAILED", settings_error);
+              return;
+            }
+            std::string cookie_error;
+            if (!chromium_settings::AllowAllCookies(context, cookie_error)) {
+              fprintf(stderr, "[CefCtx] cookie policy failed: %s\n", cookie_error.c_str());
+            }
+            handler->AddRef();
+            browsers_[browser_id] = handler.get();
+            flutter::EncodableMap res;
+            res[flutter::EncodableValue("browserId")] = flutter::EncodableValue(browser_id);
+            res[flutter::EncodableValue("textureId")] = flutter::EncodableValue(texture_id);
+            res[flutter::EncodableValue("popupTextureId")] = flutter::EncodableValue(popup_texture_id);
+            res[flutter::EncodableValue("presenters")] = flutter::EncodableValue(presenter_count);
+            deferred->Success(flutter::EncodableValue(res));
+          });
+      if (!CefBrowserHost::CreateBrowser(info, handler, initialUrl, settings, nullptr, context)) {
+        handler->SetCreatedCallback({});
+        handler->Close();
+        deferred->Error("CREATE_FAILED", "CEF could not create the browser");
+      }
+      return;
     }
     auto browser = CefBrowserHost::CreateBrowserSync(info, handler, initialUrl, settings, nullptr, context);
     if (!browser) {
@@ -309,6 +370,9 @@ void FlutterChromiumWebviewPlugin::HandleMethodCall(
     }
     auto* handler = static_cast<CefBrowserHandler*>(it->second);
     if (keyboard_ && keyboard_->HasBrowser(handler->GetBrowser())) keyboard_->SetBrowser(nullptr);
+    // The canvas texture dies with this browser; its mirrors show nothing after.
+    handler->SetMirror(nullptr);
+    mirrors_.erase(req_browser_id);
     browsers_.erase(it);
     auto reply = std::shared_ptr<flutter::MethodResult<flutter::EncodableValue>>(std::move(result));
     const std::weak_ptr<int> alive = lifetime_;
@@ -329,7 +393,49 @@ void FlutterChromiumWebviewPlugin::HandleMethodCall(
     return;
   }
   auto host = browser->GetHost();
-  
+
+  if (method_call.method_name() == "openMirrorWindow") {
+    // A live mirror + remote control of the material's canvas region: a normal
+    // desktop window sampling the same canvas texture, with input mapped back
+    // into the same browser instance (canvas mode pins dpr=1, so view coords
+    // are canvas px).
+    auto& mirrors = mirrors_[req_browser_id];
+    if (!mirrors) {
+      mirrors = std::make_shared<CanvasMirrorSet>(ChromiumGpuDevice::Get()->device(), browser);
+      if (!mirrors->Initialize()) {
+        mirrors_.erase(req_browser_id);
+        result->Error("MIRROR_FAILED", "D3D pipeline initialization failed");
+        return;
+      }
+    }
+    // Same frame source as the presenters: paint callbacks hand the newest
+    // canvas texture straight to this mirror, so what the operator sees is the
+    // live cast frame (OBS renders the same source into the interaction window).
+    handler->SetMirror(mirrors);
+    ID3D11Texture2D* initial_frame = handler->CanvasTexture();
+    if (!initial_frame) {
+      if (auto presenters = handler->TakePresenters()) initial_frame = presenters->LastCanvasTexture();
+    }
+    const bool opened = mirrors->Open(
+        GetValue<std::string>(args, "key", "mirror"),
+        CefString(GetValue<std::string>(args, "title", "eNode")).ToWString(),
+        static_cast<int>(GetNumber(args, "width", 1280)),
+        static_cast<int>(GetNumber(args, "height", 800)),
+        static_cast<float>(GetNumber(args, "u0", 0.0)),
+        static_cast<float>(GetNumber(args, "v0", 0.0)),
+        static_cast<float>(GetNumber(args, "u1", 1.0)),
+        static_cast<float>(GetNumber(args, "v1", 1.0)),
+        static_cast<int>(GetNumber(args, "canvasWidth", 1920)),
+        static_cast<int>(GetNumber(args, "canvasHeight", 1080)),
+        initial_frame);
+    if (!opened) {
+      result->Error("MIRROR_FAILED", "Could not create the mirror window");
+      return;
+    }
+    result->Success(flutter::EncodableValue(true));
+    return;
+  }
+
   if (method_call.method_name() == "setUserAgent") {
     auto reply = std::shared_ptr<flutter::MethodResult<flutter::EncodableValue>>(std::move(result));
     const std::weak_ptr<int> alive = lifetime_;
@@ -357,6 +463,17 @@ void FlutterChromiumWebviewPlugin::HandleMethodCall(
     browser->GetMainFrame()->LoadURL(url);
   } else if (method_call.method_name() == "reload") {
     browser->Reload();
+  } else if (method_call.method_name() == "setFrameRate") {
+    const int fps = static_cast<int>(GetNumber(args, "fps", 60));
+    if (fps < 1 || fps > 60) {
+      result->Error("INVALID_FPS", "Frame rate must be between 1 and 60");
+      return;
+    }
+    host->SetWindowlessFrameRate(fps);
+  } else if (method_call.method_name() == "setFlutterPreview") {
+    // Settings editor on/off for mirroring canvas frames into its Flutter
+    // texture; off by default so the canvas pays nothing while not previewed.
+    handler->SetFlutterPreview(GetValue<bool>(args, "on", false));
   } else if (method_call.method_name() == "executeJavaScript") {
     const std::string script = GetValue<std::string>(args, "js", "");
     if (!script.empty()) {

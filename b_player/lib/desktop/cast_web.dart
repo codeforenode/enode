@@ -220,6 +220,9 @@ Map<String, Object?> castWebItem(CastMaterial m, CastPlacement p) => {
         'url': m.url.trim(),
         'refresh': m.refreshSec,
         'rev': m.rev,
+        // 固定网页视口（如 1920×1080）；0 = 视口跟随投放框（旧行为）。
+        if (m.viewportW > 0 && m.viewportH > 0) 'vw': m.viewportW,
+        if (m.viewportW > 0 && m.viewportH > 0) 'vh': m.viewportH,
       },
     };
 

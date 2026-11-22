@@ -42,7 +42,11 @@ AppState _state(List<CastMonitor> monitors, {CastSettings? cast}) {
 }
 
 /// 面板是三栏 + Expanded：必须给一块有界的高度，不能像旧面板那样塞进滚动视图。
-Future<void> _pumpPanel(WidgetTester tester, AppState state) async {
+Future<void> _pumpPanel(
+  WidgetTester tester,
+  AppState state, {
+  void Function(CastMaterial material)? onOpenUrlInteract,
+}) async {
   await tester.binding.setSurfaceSize(const Size(1400, 1700));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   C.use(Brightness.dark);
@@ -51,7 +55,7 @@ Future<void> _pumpPanel(WidgetTester tester, AppState state) async {
     home: Scaffold(
       body: Padding(
         padding: const EdgeInsets.all(16),
-        child: ScreenCastPanel(state: state),
+        child: ScreenCastPanel(state: state, onOpenUrlInteract: onOpenUrlInteract),
       ),
     ),
   ));
@@ -220,6 +224,36 @@ void main() {
     await _addViaMenu(tester, l10n.screenTypeVideo);
     await _flushed(tester);
     expect(find.text(l10n.screenPerfWarning(1, 2)), findsOneWidget);
+    await _close(tester, state);
+  });
+
+  testWidgets('网址还是占位预设时互動視窗按钮不可点', (tester) async {
+    final state = _state(const [_main]);
+    var opened = 0;
+    await _pumpPanel(tester, state, onOpenUrlInteract: (_) => opened++);
+    await _addViaMenu(tester, l10n.screenTypeUrl);
+    expect(find.text(l10n.screenUrlInteract), findsOneWidget);
+    // 新素材默认 'https://'，与空串同样不够格：按钮置灰（onTap null），点了没动作。
+    await _tapInInspector(tester, find.text(l10n.screenUrlInteract));
+    expect(opened, 0);
+    // 清空之后同样不可点。
+    await tester.enterText(find.byType(TextFormField).first, '');
+    await tester.pump();
+    await _tapInInspector(tester, find.text(l10n.screenUrlInteract));
+    expect(opened, 0);
+    await _close(tester, state);
+  });
+
+  testWidgets('填了网址后互動視窗按钮把素材交给回调', (tester) async {
+    final opened = <CastMaterial>[];
+    final state = _state(const [_main]);
+    await _pumpPanel(tester, state, onOpenUrlInteract: opened.add);
+    await _addViaMenu(tester, l10n.screenTypeUrl);
+    // 网址栏是检查器里第一个 TextFormField（另一个是刷新间隔）。
+    await tester.enterText(find.byType(TextFormField).first, 'https://ktv.example.com/page');
+    await tester.pump();
+    await _tapInInspector(tester, find.text(l10n.screenUrlInteract));
+    expect(opened.single.url, 'https://ktv.example.com/page');
     await _close(tester, state);
   });
 

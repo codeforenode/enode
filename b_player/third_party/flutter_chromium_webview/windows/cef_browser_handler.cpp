@@ -50,6 +50,8 @@ void CefBrowserHandler::UnregisterTextures() {
 void CefBrowserHandler::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
   browser_ = browser;
   CefRuntimeManager::GetInstance()->BrowserOpened();
+  auto created = std::move(created_callback_);
+  if (created) created();
 }
 
 void CefBrowserHandler::OnBeforeClose(CefRefPtr<CefBrowser> browser) {
@@ -166,9 +168,14 @@ void CefBrowserHandler::OnAcceleratedPaint(CefRefPtr<CefBrowser> browser, PaintE
         // Canvas mode: the texture is only an intermediate; presenters show it
         // on the next pump tick, never inside this CEF callback.
         presenters->QueueFrame(texture_->GetD3DTexture());
+        // The settings editor previews the live canvas through a Flutter
+        // Texture of this same browser; without this notification that
+        // texture would never advance past its first frame.
+        if (FlutterPreview()) registrar_->MarkTextureFrameAvailable(texture_id_);
       } else {
         registrar_->MarkTextureFrameAvailable(texture_id_);
       }
+      if (auto mirror = TakeMirror()) mirror->QueueFrame(texture_->GetD3DTexture());
     }
   } else if (type == PET_POPUP) {
     if (popup_texture_->OnSharedFrame(info.shared_texture_handle, width, height)) {
@@ -228,6 +235,16 @@ void CefBrowserHandler::OnTitleChange(CefRefPtr<CefBrowser> browser, const CefSt
     args[flutter::EncodableValue("title")] = flutter::EncodableValue(title.ToString());
     on_event_("titleChanged", args);
   }
+}
+
+bool CefBrowserHandler::OnCursorChange(CefRefPtr<CefBrowser> browser, CefCursorHandle cursor,
+                                       cef_cursor_type_t type,
+                                       const CefCursorInfo& custom_cursor_info) {
+  // Presenters are click-through cast screens with no pointer of their own;
+  // only the interaction mirror windows show the page cursor. Without this,
+  // links kept an arrow because nothing applied CEF's cursor to them.
+  if (auto mirror = TakeMirror()) mirror->SetCursorType(static_cast<int>(type));
+  return true;
 }
 
 void CefBrowserHandler::OnLoadingStateChange(CefRefPtr<CefBrowser> browser, bool isLoading, bool canGoBack, bool canGoForward) {

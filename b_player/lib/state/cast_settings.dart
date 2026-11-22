@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:screen_retriever/screen_retriever.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../desktop/monitor_rects.dart';
+
 /// Windows 歌词投放的设置模型（一次性存成 cast.settings.v1 一个 JSON 串）。
 ///
 /// 分成两层：
@@ -437,6 +439,8 @@ class CastMaterial {
     this.autoplay = true,
     this.refreshSec = 0,
     this.rev = 0,
+    this.viewportW = 0,
+    this.viewportH = 0,
   });
 
   final String id;
@@ -473,6 +477,11 @@ class CastMaterial {
 
   /// 手动重载计数：加一就让投放页丢掉旧 document，重新载入同一条网址。
   final int rev;
+
+  /// 网址素材的浏览器页面尺寸（px）。页面按这个视口排版，再等比缩放塞进投放框；
+  /// 0 表示不固定，页面视口跟随投放框大小（旧版行为，未设置过的素材走这条）。
+  final int viewportW;
+  final int viewportH;
 
   static const defaultLyric =
       CastMaterial(id: 'lyric', type: CastMaterialType.lyric);
@@ -512,6 +521,8 @@ class CastMaterial {
     bool? autoplay,
     int? refreshSec,
     int? rev,
+    int? viewportW,
+    int? viewportH,
   }) =>
       CastMaterial(
         id: id,
@@ -534,6 +545,8 @@ class CastMaterial {
         autoplay: autoplay ?? this.autoplay,
         refreshSec: refreshSec ?? this.refreshSec,
         rev: rev ?? this.rev,
+        viewportW: viewportW ?? this.viewportW,
+        viewportH: viewportH ?? this.viewportH,
       );
 
   Map<String, dynamic> toJson() => {
@@ -547,6 +560,10 @@ class CastMaterial {
         if (type == CastMaterialType.url) ...{
           'refresh': refreshSec,
           'rev': rev,
+          if (viewportW > 0 && viewportH > 0) ...{
+            'vw': viewportW,
+            'vh': viewportH,
+          },
         },
         if (isMedia) ...{
           'path': path,
@@ -592,6 +609,8 @@ class CastMaterial {
       autoplay: raw['auto'] != false,
       refreshSec: ((raw['refresh'] as num?)?.toInt() ?? 0).clamp(0, 86400),
       rev: ((raw['rev'] as num?)?.toInt() ?? 0).clamp(0, 1 << 30),
+      viewportW: ((raw['vw'] as num?)?.toInt() ?? 0).clamp(0, 10000),
+      viewportH: ((raw['vh'] as num?)?.toInt() ?? 0).clamp(0, 10000),
     );
   }
 
@@ -750,6 +769,8 @@ class CastMonitor {
     required this.workSize,
     required this.fullSize,
     required this.scale,
+    this.primary = false,
+    this.model = '',
   });
 
   factory CastMonitor.fromDisplay(Display d) => CastMonitor(
@@ -771,21 +792,56 @@ class CastMonitor {
   final Size fullSize;
   final double scale;
 
+  /// Windows 主显示器的标记；screen_retriever 不提供，由 user32 补齐。
+  final bool primary;
+
+  /// EDID 型号串（如 `DELL U2415`）。Windows 没有可靠的「内置 / 外接」标志，
+  /// 拔插后同名屏的 id 也会变，这里是用户唯一能认屏的线索。
+  final String model;
+
   /// 该屏工作区在虚拟桌面里的矩形（投放区的坐标基准）。
   Rect get workRect => Rect.fromLTWH(workOrigin.dx, workOrigin.dy, workSize.width, workSize.height);
 
   String get label =>
       '$name · ${workSize.width.round()}x${workSize.height.round()} · ${(scale * 100).round()}%';
+
+  CastMonitor copyWith({bool? primary, String? model}) => CastMonitor(
+        id: id,
+        name: name,
+        workOrigin: workOrigin,
+        workSize: workSize,
+        fullSize: fullSize,
+        scale: scale,
+        primary: primary ?? this.primary,
+        model: model ?? this.model,
+      );
 }
 
 /// 扫一次显示器。没有插件环境（单元测试）时返回空列表，投放入口随之关闭，不抛异常。
+///
+/// screen_retriever 不给「主屏」和显示器型号，这里用 user32 按物理工作区对位补齐：
+/// 两套坐标只差该屏缩放（逻辑 × scale = 物理），±3px 内视为同一块屏。
 Future<List<CastMonitor>> scanCastMonitors() async {
+  final List<CastMonitor> monitors;
   try {
-    return CastMonitor.scan(await screenRetriever.getAllDisplays());
+    monitors = CastMonitor.scan(await screenRetriever.getAllDisplays());
   } catch (_) {
     return const [];
   }
+  if (monitors.isEmpty) return monitors;
+  final physical = physicalMonitorRects();
+  if (physical.isEmpty) return monitors;
+  return [
+    for (final m in monitors)
+      switch (matchPhysicalRect(predictedWork: _physicalWork(m), all: physical)) {
+        final p? => m.copyWith(primary: p.primary, model: p.model),
+        null => m,
+      },
+  ];
 }
+
+Rect _physicalWork(CastMonitor m) => Rect.fromLTWH(m.workOrigin.dx * m.scale, m.workOrigin.dy * m.scale,
+    m.workSize.width * m.scale, m.workSize.height * m.scale);
 
 /// 屏幕管理设置本体：每台屏的勾选/几何/底色 + 共享素材 + 每屏的投放项。
 ///
@@ -798,6 +854,7 @@ class CastSettings {
     this.targets = const [],
     this.materials = const [CastMaterial.defaultLyric],
     this.placements = const [],
+    this.frameRate = 60,
   });
 
   static const _key = 'cast.settings.v2';
@@ -808,6 +865,10 @@ class CastSettings {
   final List<CastTarget> targets;
   final List<CastMaterial> materials;
   final List<CastPlacement> placements;
+
+  /// 画布浏览器的最高渲染帧率。整块画布共用一个 CEF 浏览器，所以它是全局的：
+  /// 网页、歌词动画都受它限制（对应 OBS 浏览器源的 FPS，但无法按素材分档）。
+  final int frameRate;
 
   static const defaults = CastSettings();
 
@@ -822,12 +883,14 @@ class CastSettings {
     List<CastTarget>? targets,
     List<CastMaterial>? materials,
     List<CastPlacement>? placements,
+    int? frameRate,
   }) =>
       CastSettings(
         enabled: enabled ?? this.enabled,
         targets: targets ?? this.targets,
         materials: materials ?? this.materials,
         placements: placements ?? this.placements,
+        frameRate: frameRate ?? this.frameRate,
       );
 
   /// 取某台屏的配置；没存过就返回一个未勾选的默认值（调用方再补 name）。
@@ -1083,6 +1146,7 @@ class CastSettings {
           if (p is Map && '${p['id'] ?? ''}'.isNotEmpty && ids.contains('${p['m'] ?? ''}'))
             CastPlacement.fromJson(p),
       ],
+      frameRate: ((raw['fps'] as num?)?.toInt() ?? 60).clamp(24, 60),
     );
   }
 
@@ -1148,19 +1212,21 @@ class CastSettings {
         'targets': [for (final t in targets) t.toJson()],
         'materials': [for (final m in materials) m.toJson()],
         'placements': [for (final p in placements) p.toJson()],
+        'fps': frameRate,
       };
 
   @override
   bool operator ==(Object other) =>
       other is CastSettings &&
       other.enabled == enabled &&
+      other.frameRate == frameRate &&
       _sameList(other.targets, targets) &&
       _sameList(other.materials, materials) &&
       _sameList(other.placements, placements);
 
   @override
-  int get hashCode =>
-      Object.hash(enabled, Object.hashAll(targets), Object.hashAll(materials), Object.hashAll(placements));
+  int get hashCode => Object.hash(
+      enabled, frameRate, Object.hashAll(targets), Object.hashAll(materials), Object.hashAll(placements));
 }
 
 /// 只读视图：给界面按 id 快速取素材，避免每帧线性查找。

@@ -13,6 +13,7 @@
 class CefBrowserHandler;
 class CefRuntimeManager;
 class CefKeyboard;
+class CanvasMirrorSet;
 
 namespace flutter_chromium_webview {
 
@@ -33,6 +34,9 @@ class FlutterChromiumWebviewPlugin : public flutter::Plugin {
 
  private:
   void CloseAll(std::function<void()> done = {});
+  // Opens with no paint since the last frame still need that last frame; the
+  // pump tick hands it over once per mirror (never inside a CEF callback).
+  void FeedMirrors();
   // Called when a method is called on this plugin's channel from Dart.
   void HandleMethodCall(
       const flutter::MethodCall<flutter::EncodableValue> &method_call,
@@ -44,6 +48,10 @@ class FlutterChromiumWebviewPlugin : public flutter::Plugin {
   
   // A map of browser ID to handler
   std::map<int64_t, void*> browsers_; // Use void* to avoid CEF includes in header, cast to CefRefPtr<CefBrowserHandler>* in cpp
+
+  // Live mirror windows per canvas browser; torn down with the browser. The
+  // handler holds a copy too, so paint callbacks can feed it directly.
+  std::map<int64_t, std::shared_ptr<CanvasMirrorSet>> mirrors_;
   
   std::string session_id_;
   bool resetting_ = false;

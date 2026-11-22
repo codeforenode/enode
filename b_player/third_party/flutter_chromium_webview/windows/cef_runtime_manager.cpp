@@ -15,6 +15,16 @@ class RenderingApp : public CefApp {
  public:
   void OnBeforeCommandLineProcessing(const CefString& process_type,
                                     CefRefPtr<CefCommandLine> command_line) override {
+    char debug[8] = {};
+    const DWORD debug_length = GetEnvironmentVariableA("ENODE_CEF_DEBUG", debug, sizeof(debug));
+    if (debug_length > 0 && debug_length < sizeof(debug) && debug[0] == '1') {
+      command_line->AppendSwitchWithValue("remote-debugging-port", "9222");
+      command_line->AppendSwitch("remote-allow-origins=*");
+    }
+    // Cast pages are cross-site frames; this build's third-party cookie
+    // deprecation would otherwise drop every session cookie they depend on.
+    command_line->AppendSwitchWithValue(
+        "disable-features", "ForceThirdPartyCookieBlockingEnabled");
     if (!ChromiumSoftwareRendering()) return;
     command_line->AppendSwitch("disable-gpu");
     command_line->AppendSwitch("disable-gpu-compositing");
@@ -78,6 +88,9 @@ bool CefRuntimeManager::Initialize(const std::string& cache_path, int argc, char
   // Keep Chromium's sandbox enabled. Unsupported hosts must fail explicitly;
   // no automatic --no-sandbox fallback is permitted.
   settings.windowless_rendering_enabled = true;
+  // Session cookies are only written to disk when asked; without this a restart
+  // logs every site out even though the named profile keeps everything else.
+  settings.persist_session_cookies = true;
 
   // Set paths
   CefString(&settings.cache_path) = cache_path;

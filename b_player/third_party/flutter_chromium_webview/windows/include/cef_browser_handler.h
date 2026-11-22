@@ -3,6 +3,7 @@
 
 #include "include/cef_client.h"
 #include "include/cef_render_handler.h"
+#include <atomic>
 #include <functional>
 #include <vector>
 #include <flutter/texture_registrar.h>
@@ -47,6 +48,9 @@ class CefBrowserHandler : public CefClient,
   CefRefPtr<CefContextMenuHandler> GetContextMenuHandler() override { return this; }
   CefRefPtr<CefFocusHandler> GetFocusHandler() override { return this; }
 
+  // Asynchronously created browsers report readiness here. Persistent request
+  // contexts finish loading on the message loop, so creation cannot be sync.
+  void SetCreatedCallback(std::function<void()> callback) { created_callback_ = std::move(callback); }
   void OnAfterCreated(CefRefPtr<CefBrowser> browser) override;
   void OnBeforeClose(CefRefPtr<CefBrowser> browser) override;
   bool OnBeforePopup(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, int popup_id,
@@ -72,6 +76,8 @@ class CefBrowserHandler : public CefClient,
 
   void OnAddressChange(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, const CefString& url) override;
   void OnTitleChange(CefRefPtr<CefBrowser> browser, const CefString& title) override;
+  bool OnCursorChange(CefRefPtr<CefBrowser> browser, CefCursorHandle cursor,
+                      cef_cursor_type_t type, const CefCursorInfo& custom_cursor_info) override;
   
   void OnLoadingStateChange(CefRefPtr<CefBrowser> browser, bool isLoading, bool canGoBack, bool canGoForward) override;
   void OnLoadError(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, ErrorCode errorCode,
@@ -113,6 +119,28 @@ class CefBrowserHandler : public CefClient,
     }
     if (dropped) dropped->Clear();
   }
+  // The interaction-window mirror draws this same texture every frame, exactly
+  // like the presenters do (OBS renders one browser source into several
+  // displays); paint callbacks feed it so it never shows a stale frame.
+  void SetMirror(std::shared_ptr<CanvasMirrorSet> mirror) {
+    std::lock_guard<std::mutex> lock(mirror_mutex_);
+    mirror_ = std::move(mirror);
+  }
+  std::shared_ptr<CanvasMirrorSet> TakeMirror() {
+    std::lock_guard<std::mutex> lock(mirror_mutex_);
+    return mirror_;
+  }
+  // Newest canvas texture (our copy of the CEF shared texture). Null before the
+  // first accelerated frame.
+  ID3D11Texture2D* CanvasTexture() const {
+    return texture_ ? texture_->GetD3DTexture() : nullptr;
+  }
+  // Settings-editor preview: in canvas mode frames normally go only to the
+  // native presenters. While the editor shows a Texture of this browser, the
+  // texture must also get frame-available notifications, or it would stay at
+  // its first frame (black).
+  void SetFlutterPreview(bool on) { flutter_preview_ = on; }
+  bool FlutterPreview() const { return flutter_preview_; }
   void Close(std::function<void()> on_closed = {});
   
   CefRefPtr<CefBrowser> GetBrowser() const { return closing_ ? nullptr : browser_; }
@@ -124,8 +152,11 @@ class CefBrowserHandler : public CefClient,
   ChromiumFrameTexture* popup_texture_;
   std::shared_ptr<CanvasPresenterSet> presenters_;
   std::mutex presenters_mutex_;
+  std::shared_ptr<CanvasMirrorSet> mirror_;
+  std::mutex mirror_mutex_;
   int64_t texture_id_;
   int64_t popup_texture_id_;
+  std::atomic<bool> flutter_preview_{false};
   
   bool registered_ = true;
   bool closing_ = false;
@@ -136,6 +167,7 @@ class CefBrowserHandler : public CefClient,
   PendingCallbacks<CefRefPtr<CefJSDialogCallback>> pending_dialogs_;
   PendingCallbacks<CefRefPtr<CefRunContextMenuCallback>> pending_menus_;
   EventCallback on_event_;
+  std::function<void()> created_callback_;
   CefRefPtr<CefBrowser> browser_;
   std::vector<std::function<void()>> close_callbacks_;
   

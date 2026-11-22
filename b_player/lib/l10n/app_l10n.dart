@@ -2836,6 +2836,18 @@ abstract class AppL10n {
   /// **'點選一台螢幕開始排版'**
   String get screenScreenHint;
 
+  /// No description provided for @screenPrimaryBadge.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'主螢幕'**
+  String get screenPrimaryBadge;
+
+  /// No description provided for @screenMonitorHint.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'「主螢幕」由 Windows 指定；型號讀自顯示器 EDID，同款螢幕請看左右擺放位置區分。'**
+  String get screenMonitorHint;
+
   /// No description provided for @screenLayersCount.
   ///
   /// In zh_Hant, this message translates to:
@@ -3172,11 +3184,53 @@ abstract class AppL10n {
   /// **'重新載入'**
   String get screenReload;
 
+  /// No description provided for @screenUrlInteract.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'互動視窗'**
+  String get screenUrlInteract;
+
+  /// No description provided for @urlInteractWindowTitle.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'網頁互動 · {name}'**
+  String urlInteractWindowTitle(String name);
+
+  /// No description provided for @castMirrorNeedsCasting.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'請先勾選螢幕開始投放，互動視窗才能開啟。'**
+  String get castMirrorNeedsCasting;
+
   /// No description provided for @screenRefresh.
   ///
   /// In zh_Hant, this message translates to:
   /// **'刷新間隔'**
   String get screenRefresh;
+
+  /// No description provided for @screenPageSize.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'頁面尺寸'**
+  String get screenPageSize;
+
+  /// No description provided for @screenPageSizeHint.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'瀏覽器按這個尺寸排版，再等比縮放進投放框；兩項留空 = 跟隨投放框。'**
+  String get screenPageSizeHint;
+
+  /// No description provided for @screenFrameRate.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'更新率'**
+  String get screenFrameRate;
+
+  /// No description provided for @screenFrameRateHint.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'整塊畫布共用一個更新率（與 OBS 一樣不能按素材分開），調整後立即生效。'**
+  String get screenFrameRateHint;
 
   /// No description provided for @screenSeconds.
   ///
