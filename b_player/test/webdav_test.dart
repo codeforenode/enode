@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:b_player/edge/config.dart';
@@ -181,6 +182,48 @@ void main() {
     expect(await WebDavIndexStore(temp.path).read(source.id, server.url), isNull);
     final prefs = await SharedPreferences.getInstance();
     expect(jsonDecode(prefs.getString('webdav.servers.v1')!) as List, isEmpty);
+  });
+
+  test('封面缓存：清孤儿并按 mtime 淘汰到预算内', () async {
+    final store = WebDavIndexStore(temp.path);
+    final keepNew = await store.artFile(server.id, '$_base/cover.jpg', '.jpg');
+    final keepOld = await store.artFile(server.id, '$_base/old.jpg', '.jpg');
+    final orphan = await store.artFile(server.id, '$_base/gone.jpg', '.jpg');
+    await keepNew.writeAsBytes(List.filled(10, 1));
+    await keepOld.writeAsBytes(List.filled(10, 2));
+    await orphan.writeAsBytes(List.filled(10, 3));
+    await keepOld.setLastModified(DateTime(2020));
+    final keep = {p.basename(keepNew.path), p.basename(keepOld.path)};
+
+    await store.pruneArt(server.id, keep);
+    expect(await orphan.exists(), isFalse);
+    expect(await keepNew.exists(), isTrue);
+    expect(await keepOld.exists(), isTrue, reason: '总量未超预算不淘汰');
+
+    await store.pruneArt(server.id, keep, maxBytes: 15);
+    expect(await keepOld.exists(), isFalse, reason: '先删最久未用的');
+    expect(await keepNew.exists(), isTrue);
+  });
+
+  test('同步后自动清理不再被曲目引用的封面', () async {
+    final store = WebDavIndexStore(temp.path);
+    final source = WebDavSource(
+      server: server,
+      store: store,
+      client: WebDavClient(server: server, client: mockClient()),
+    );
+    addTearDown(source.dispose);
+    final result = await source.sync();
+    final song = result.tracks.firstWhere((t) => t.title == 'Song');
+    await source.picUri(song);
+
+    final orphan = await store.artFile(server.id, '$_base/gone.jpg', '.jpg');
+    await orphan.writeAsBytes([1]);
+    await source.sync();
+    expect(await orphan.exists(), isFalse);
+
+    final kept = await store.artFile(server.id, '$_base/cover.jpg', '.jpg');
+    expect(await kept.exists(), isTrue, reason: '曲库还在引用，不能被清');
   });
 
   test('地址规范化与校验', () {

@@ -1,11 +1,25 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:b_player/state/cast_settings.dart';
 
+class _TempPathProvider extends PathProviderPlatform {
+  _TempPathProvider(this.path);
+
+  final String path;
+
+  @override
+  Future<String?> getApplicationSupportPath() async => path;
+}
+
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   const m1 = CastMonitor(
     id: r'MONITOR\BOE0A74\0001',
     name: r'\\.\DISPLAY2',
@@ -246,6 +260,52 @@ void main() {
         isFalse,
       );
       expect(idle.hasContent, isTrue);
+    });
+  });
+
+  group('投放设置落盘', () {
+    late Directory dir;
+
+    setUp(() async {
+      dir = await Directory.systemTemp.createTemp('enode_cast_');
+      PathProviderPlatform.instance = _TempPathProvider(dir.path);
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    tearDown(() async {
+      if (await dir.exists()) await dir.delete(recursive: true);
+    });
+
+    test('写 data/cast.json，能读回同一份设置', () async {
+      const settings = CastSettings(
+        enabled: true,
+        frameRate: 30,
+        targets: [CastTarget(monitorId: 'M1', name: '副屏', enabled: true, mode: CastMode.region)],
+      );
+      await settings.save();
+
+      final file = File(p.join(dir.path, 'data', 'cast.json'));
+      expect(await file.exists(), isTrue);
+      expect(await CastSettings.load(), settings);
+    });
+
+    test('没有新文件时迁移旧 prefs，旧 key 保留一版', () async {
+      const settings = CastSettings(frameRate: 24);
+      SharedPreferences.setMockInitialValues({'cast.settings.v2': settings.toJsonString()});
+
+      final loaded = await CastSettings.load();
+      expect(loaded.frameRate, 24);
+      expect(await File(p.join(dir.path, 'data', 'cast.json')).exists(), isTrue);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('cast.settings.v2'), settings.toJsonString());
+    });
+
+    test('文件损坏且无备份时退回默认值', () async {
+      final file = File(p.join(dir.path, 'data', 'cast.json'));
+      await file.parent.create(recursive: true);
+      await file.writeAsString('{broken');
+
+      expect(await CastSettings.load(), CastSettings.defaults);
     });
   });
 }

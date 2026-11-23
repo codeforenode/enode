@@ -314,6 +314,198 @@ class AppL10nZh extends AppL10n {
   String get removeFromQueue => '移出隊列';
 
   @override
+  String get requestQueue => '點歌插播';
+
+  @override
+  String get priorityTag => '優先';
+
+  @override
+  String get noRequests => '暫無點歌';
+
+  @override
+  String get selfPlaylists => '自建列表';
+
+  @override
+  String get newPlaylist => '新建列表';
+
+  @override
+  String get createPlaylistTitle => '新建播放列表';
+
+  @override
+  String get playlistName => '列表名稱';
+
+  @override
+  String get playlistNameHint => '例如：午市歌單';
+
+  @override
+  String get playlistNameRequired => '請輸入列表名稱';
+
+  @override
+  String get playlistMode => '播放順序';
+
+  @override
+  String get sequential => '順序';
+
+  @override
+  String get shuffle => '隨機';
+
+  @override
+  String get playlistEmptyHint => '列表還是空的，點「搜尋新增」';
+
+  @override
+  String get playlistNoLists => '還沒有自建列表';
+
+  @override
+  String get playlistNoListsHint => '建立後可按順序或隨機播放，也能設定時段自動切換。';
+
+  @override
+  String playlistCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count 首',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String playlistPosition(int index, int total) {
+    return '第 $index / $total 首';
+  }
+
+  @override
+  String get schedule => '時段';
+
+  @override
+  String get scheduleOff => '未設時段';
+
+  @override
+  String get scheduleActiveNow => '時段內';
+
+  @override
+  String get scheduleTitle => '播放時段';
+
+  @override
+  String get scheduleEnable => '按時間段播放';
+
+  @override
+  String get scheduleDays => '生效星期';
+
+  @override
+  String get scheduleRanges => '時間段';
+
+  @override
+  String get scheduleAddRange => '新增時段';
+
+  @override
+  String get scheduleNeedDays => '至少選擇一天';
+
+  @override
+  String get scheduleNeedRange => '至少新增一個時間段';
+
+  @override
+  String get scheduleRangeInvalid => '開始與結束時間不能相同';
+
+  @override
+  String get scheduleHint => '時段結束後，目前歌曲播完會自動停下或切換到下一份列表。';
+
+  @override
+  String get weekdayMon => '一';
+
+  @override
+  String get weekdayTue => '二';
+
+  @override
+  String get weekdayWed => '三';
+
+  @override
+  String get weekdayThu => '四';
+
+  @override
+  String get weekdayFri => '五';
+
+  @override
+  String get weekdaySat => '六';
+
+  @override
+  String get weekdaySun => '日';
+
+  @override
+  String playlistInterrupted(String time) {
+    return '點歌優先播放中 · 自建列表暫停於 $time';
+  }
+
+  @override
+  String playlistResumeHint(String time) {
+    return '點歌播完後從 $time 繼續';
+  }
+
+  @override
+  String get searchAdd => '搜尋新增';
+
+  @override
+  String get searchSongsTitle => '搜尋歌曲';
+
+  @override
+  String get searchSongsHint => '歌名或歌手';
+
+  @override
+  String get searchStartHint => '輸入關鍵詞搜尋曲庫';
+
+  @override
+  String get searchNoResult => '沒有找到符合的歌曲';
+
+  @override
+  String get searchFailed => '搜尋失敗，請稍後再試';
+
+  @override
+  String get searchAll => '全部';
+
+  @override
+  String get searchLocal => '本地';
+
+  @override
+  String get searchWebdav => 'WebDAV';
+
+  @override
+  String get searchOnline => '線上';
+
+  @override
+  String get addToPlaylist => '新增';
+
+  @override
+  String get alreadyInPlaylist => '已在列表';
+
+  @override
+  String get removeFromPlaylist => '從列表移除';
+
+  @override
+  String get deletePlaylist => '刪除列表';
+
+  @override
+  String deletePlaylistConfirm(String name) {
+    return '刪除「$name」？歌曲不會從曲庫刪除。';
+  }
+
+  @override
+  String get playPlaylist => '播放列表';
+
+  @override
+  String get pausePlaylist => '暫停列表';
+
+  @override
+  String get playlistWaitingRequests => '點歌優先中，結束後自動繼續';
+
+  @override
+  String get playlistNoSongs => '列表裡還沒有歌曲';
+
+  @override
+  String get playlistSearchUnavailable => '還沒有可搜尋的音源';
+
+  @override
+  String get playlistSwitchHint => '切換列表不影響點歌插播。';
+
+  @override
   String get library => '曲庫';
 
   @override
@@ -2526,6 +2718,198 @@ class AppL10nZhHans extends AppL10nZh {
   String get removeFromQueue => '移出队列';
 
   @override
+  String get requestQueue => '点歌插播';
+
+  @override
+  String get priorityTag => '优先';
+
+  @override
+  String get noRequests => '暂无点歌';
+
+  @override
+  String get selfPlaylists => '自建列表';
+
+  @override
+  String get newPlaylist => '新建列表';
+
+  @override
+  String get createPlaylistTitle => '新建播放列表';
+
+  @override
+  String get playlistName => '列表名称';
+
+  @override
+  String get playlistNameHint => '例如：午市歌单';
+
+  @override
+  String get playlistNameRequired => '请输入列表名称';
+
+  @override
+  String get playlistMode => '播放顺序';
+
+  @override
+  String get sequential => '顺序';
+
+  @override
+  String get shuffle => '随机';
+
+  @override
+  String get playlistEmptyHint => '列表还是空的，点「搜索添加」';
+
+  @override
+  String get playlistNoLists => '还没有自建列表';
+
+  @override
+  String get playlistNoListsHint => '新建后可按顺序或随机播放，也能设置时段自动切换。';
+
+  @override
+  String playlistCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count 首',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String playlistPosition(int index, int total) {
+    return '第 $index / $total 首';
+  }
+
+  @override
+  String get schedule => '时段';
+
+  @override
+  String get scheduleOff => '未设时段';
+
+  @override
+  String get scheduleActiveNow => '时段内';
+
+  @override
+  String get scheduleTitle => '播放时段';
+
+  @override
+  String get scheduleEnable => '按时间段播放';
+
+  @override
+  String get scheduleDays => '生效星期';
+
+  @override
+  String get scheduleRanges => '时间段';
+
+  @override
+  String get scheduleAddRange => '添加时段';
+
+  @override
+  String get scheduleNeedDays => '至少选择一天';
+
+  @override
+  String get scheduleNeedRange => '至少添加一个时间段';
+
+  @override
+  String get scheduleRangeInvalid => '开始与结束时间不能相同';
+
+  @override
+  String get scheduleHint => '时段结束后，当前歌曲播完会自动停下或切换到下一份列表。';
+
+  @override
+  String get weekdayMon => '一';
+
+  @override
+  String get weekdayTue => '二';
+
+  @override
+  String get weekdayWed => '三';
+
+  @override
+  String get weekdayThu => '四';
+
+  @override
+  String get weekdayFri => '五';
+
+  @override
+  String get weekdaySat => '六';
+
+  @override
+  String get weekdaySun => '日';
+
+  @override
+  String playlistInterrupted(String time) {
+    return '点歌优先播放中 · 自建列表暂停于 $time';
+  }
+
+  @override
+  String playlistResumeHint(String time) {
+    return '点歌播完后从 $time 继续';
+  }
+
+  @override
+  String get searchAdd => '搜索添加';
+
+  @override
+  String get searchSongsTitle => '搜索歌曲';
+
+  @override
+  String get searchSongsHint => '歌名或歌手';
+
+  @override
+  String get searchStartHint => '输入关键词搜索曲库';
+
+  @override
+  String get searchNoResult => '没有找到匹配的歌曲';
+
+  @override
+  String get searchFailed => '搜索失败，请稍后再试';
+
+  @override
+  String get searchAll => '全部';
+
+  @override
+  String get searchLocal => '本地';
+
+  @override
+  String get searchWebdav => 'WebDAV';
+
+  @override
+  String get searchOnline => '在线';
+
+  @override
+  String get addToPlaylist => '添加';
+
+  @override
+  String get alreadyInPlaylist => '已在列表';
+
+  @override
+  String get removeFromPlaylist => '从列表移除';
+
+  @override
+  String get deletePlaylist => '删除列表';
+
+  @override
+  String deletePlaylistConfirm(String name) {
+    return '删除「$name」？歌曲不会从曲库删除。';
+  }
+
+  @override
+  String get playPlaylist => '播放列表';
+
+  @override
+  String get pausePlaylist => '暂停列表';
+
+  @override
+  String get playlistWaitingRequests => '点歌优先中，结束后自动继续';
+
+  @override
+  String get playlistNoSongs => '列表里还没有歌曲';
+
+  @override
+  String get playlistSearchUnavailable => '还没有可搜索的音源';
+
+  @override
+  String get playlistSwitchHint => '切换列表不影响点歌插播。';
+
+  @override
   String get library => '曲库';
 
   @override
@@ -4734,6 +5118,198 @@ class AppL10nZhHant extends AppL10nZh {
 
   @override
   String get removeFromQueue => '移出隊列';
+
+  @override
+  String get requestQueue => '點歌插播';
+
+  @override
+  String get priorityTag => '優先';
+
+  @override
+  String get noRequests => '暫無點歌';
+
+  @override
+  String get selfPlaylists => '自建列表';
+
+  @override
+  String get newPlaylist => '新建列表';
+
+  @override
+  String get createPlaylistTitle => '新建播放列表';
+
+  @override
+  String get playlistName => '列表名稱';
+
+  @override
+  String get playlistNameHint => '例如：午市歌單';
+
+  @override
+  String get playlistNameRequired => '請輸入列表名稱';
+
+  @override
+  String get playlistMode => '播放順序';
+
+  @override
+  String get sequential => '順序';
+
+  @override
+  String get shuffle => '隨機';
+
+  @override
+  String get playlistEmptyHint => '列表還是空的，點「搜尋新增」';
+
+  @override
+  String get playlistNoLists => '還沒有自建列表';
+
+  @override
+  String get playlistNoListsHint => '建立後可按順序或隨機播放，也能設定時段自動切換。';
+
+  @override
+  String playlistCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count 首',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String playlistPosition(int index, int total) {
+    return '第 $index / $total 首';
+  }
+
+  @override
+  String get schedule => '時段';
+
+  @override
+  String get scheduleOff => '未設時段';
+
+  @override
+  String get scheduleActiveNow => '時段內';
+
+  @override
+  String get scheduleTitle => '播放時段';
+
+  @override
+  String get scheduleEnable => '按時間段播放';
+
+  @override
+  String get scheduleDays => '生效星期';
+
+  @override
+  String get scheduleRanges => '時間段';
+
+  @override
+  String get scheduleAddRange => '新增時段';
+
+  @override
+  String get scheduleNeedDays => '至少選擇一天';
+
+  @override
+  String get scheduleNeedRange => '至少新增一個時間段';
+
+  @override
+  String get scheduleRangeInvalid => '開始與結束時間不能相同';
+
+  @override
+  String get scheduleHint => '時段結束後，目前歌曲播完會自動停下或切換到下一份列表。';
+
+  @override
+  String get weekdayMon => '一';
+
+  @override
+  String get weekdayTue => '二';
+
+  @override
+  String get weekdayWed => '三';
+
+  @override
+  String get weekdayThu => '四';
+
+  @override
+  String get weekdayFri => '五';
+
+  @override
+  String get weekdaySat => '六';
+
+  @override
+  String get weekdaySun => '日';
+
+  @override
+  String playlistInterrupted(String time) {
+    return '點歌優先播放中 · 自建列表暫停於 $time';
+  }
+
+  @override
+  String playlistResumeHint(String time) {
+    return '點歌播完後從 $time 繼續';
+  }
+
+  @override
+  String get searchAdd => '搜尋新增';
+
+  @override
+  String get searchSongsTitle => '搜尋歌曲';
+
+  @override
+  String get searchSongsHint => '歌名或歌手';
+
+  @override
+  String get searchStartHint => '輸入關鍵詞搜尋曲庫';
+
+  @override
+  String get searchNoResult => '沒有找到符合的歌曲';
+
+  @override
+  String get searchFailed => '搜尋失敗，請稍後再試';
+
+  @override
+  String get searchAll => '全部';
+
+  @override
+  String get searchLocal => '本地';
+
+  @override
+  String get searchWebdav => 'WebDAV';
+
+  @override
+  String get searchOnline => '線上';
+
+  @override
+  String get addToPlaylist => '新增';
+
+  @override
+  String get alreadyInPlaylist => '已在列表';
+
+  @override
+  String get removeFromPlaylist => '從列表移除';
+
+  @override
+  String get deletePlaylist => '刪除列表';
+
+  @override
+  String deletePlaylistConfirm(String name) {
+    return '刪除「$name」？歌曲不會從曲庫刪除。';
+  }
+
+  @override
+  String get playPlaylist => '播放列表';
+
+  @override
+  String get pausePlaylist => '暫停列表';
+
+  @override
+  String get playlistWaitingRequests => '點歌優先中，結束後自動繼續';
+
+  @override
+  String get playlistNoSongs => '列表裡還沒有歌曲';
+
+  @override
+  String get playlistSearchUnavailable => '還沒有可搜尋的音源';
+
+  @override
+  String get playlistSwitchHint => '切換列表不影響點歌插播。';
 
   @override
   String get library => '曲庫';

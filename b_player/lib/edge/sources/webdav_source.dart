@@ -202,6 +202,11 @@ class WebDavSource extends MusicSource {
       } catch (_) {
         // 索引落盘失败不影响本次内存曲库。
       }
+      try {
+        await store.pruneArt(id, _artKeepNames());
+      } catch (_) {
+        // 封面包只是缓存，清不掉不阻断同步。
+      }
     }
     return WebDavSyncResult(
       tracks: tracks,
@@ -281,7 +286,13 @@ class WebDavSource extends MusicSource {
     final url = track.extra['davCover'];
     if (url is! String || url.isEmpty) return null;
     final cached = _artCache[url];
-    if (cached != null && await cached.exists()) return cached.uri;
+    if (cached != null && await cached.exists()) {
+      // 用一次就刷新 mtime，封面预算淘汰时先删最久没显示的。
+      try {
+        await cached.setLastModified(DateTime.now());
+      } catch (_) {}
+      return cached.uri;
+    }
     try {
       final bytes = await _client.getBytes(Uri.parse(url));
       if (bytes.isEmpty) return null;
@@ -293,6 +304,16 @@ class WebDavSource extends MusicSource {
       return null;
     }
   }
+
+  /// 当前曲库引用的封面文件名；同步后按它清孤儿。
+  Set<String> _artKeepNames() => {
+        for (final track in _tracks)
+          if (track.extra['davCover'] is String)
+            WebDavIndexStore.artName(
+              track.extra['davCover'] as String,
+              _imageExtension(track.extra['davCover'] as String),
+            ),
+      };
 
   static String _imageExtension(String url) {
     final ext = p.extension(Uri.parse(url).path).toLowerCase();

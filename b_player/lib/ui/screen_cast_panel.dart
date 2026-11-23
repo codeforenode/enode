@@ -161,8 +161,11 @@ class _ScreenCastPanelState extends State<ScreenCastPanel> {
 
   Future<void> _persistNow() async {
     try {
-      await widget.state.saveCast(_draft);
+      // saveCast 会先同步更新 state.cast 再落盘；这里同一拍记下已保存的版本，
+      // 否则落盘期间别的通知进来，_onApp 会把正在编辑的草稿当成外部改动回滚。
+      final saving = widget.state.saveCast(_draft);
       _saved = widget.state.cast;
+      await saving;
       if (mounted) setState(() => _error = null);
     } catch (e) {
       if (mounted) setState(() => _error = l10n.saveFailed('$e'));

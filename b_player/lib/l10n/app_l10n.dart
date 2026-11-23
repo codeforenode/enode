@@ -657,6 +657,360 @@ abstract class AppL10n {
   /// **'移出隊列'**
   String get removeFromQueue;
 
+  /// No description provided for @requestQueue.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'點歌插播'**
+  String get requestQueue;
+
+  /// No description provided for @priorityTag.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'優先'**
+  String get priorityTag;
+
+  /// No description provided for @noRequests.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'暫無點歌'**
+  String get noRequests;
+
+  /// No description provided for @selfPlaylists.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'自建列表'**
+  String get selfPlaylists;
+
+  /// No description provided for @newPlaylist.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'新建列表'**
+  String get newPlaylist;
+
+  /// No description provided for @createPlaylistTitle.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'新建播放列表'**
+  String get createPlaylistTitle;
+
+  /// No description provided for @playlistName.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'列表名稱'**
+  String get playlistName;
+
+  /// No description provided for @playlistNameHint.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'例如：午市歌單'**
+  String get playlistNameHint;
+
+  /// No description provided for @playlistNameRequired.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'請輸入列表名稱'**
+  String get playlistNameRequired;
+
+  /// No description provided for @playlistMode.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'播放順序'**
+  String get playlistMode;
+
+  /// No description provided for @sequential.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'順序'**
+  String get sequential;
+
+  /// No description provided for @shuffle.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'隨機'**
+  String get shuffle;
+
+  /// No description provided for @playlistEmptyHint.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'列表還是空的，點「搜尋新增」'**
+  String get playlistEmptyHint;
+
+  /// No description provided for @playlistNoLists.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'還沒有自建列表'**
+  String get playlistNoLists;
+
+  /// No description provided for @playlistNoListsHint.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'建立後可按順序或隨機播放，也能設定時段自動切換。'**
+  String get playlistNoListsHint;
+
+  /// No description provided for @playlistCount.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'{count, plural, other{{count} 首}}'**
+  String playlistCount(int count);
+
+  /// No description provided for @playlistPosition.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'第 {index} / {total} 首'**
+  String playlistPosition(int index, int total);
+
+  /// No description provided for @schedule.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'時段'**
+  String get schedule;
+
+  /// No description provided for @scheduleOff.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'未設時段'**
+  String get scheduleOff;
+
+  /// No description provided for @scheduleActiveNow.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'時段內'**
+  String get scheduleActiveNow;
+
+  /// No description provided for @scheduleTitle.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'播放時段'**
+  String get scheduleTitle;
+
+  /// No description provided for @scheduleEnable.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'按時間段播放'**
+  String get scheduleEnable;
+
+  /// No description provided for @scheduleDays.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'生效星期'**
+  String get scheduleDays;
+
+  /// No description provided for @scheduleRanges.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'時間段'**
+  String get scheduleRanges;
+
+  /// No description provided for @scheduleAddRange.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'新增時段'**
+  String get scheduleAddRange;
+
+  /// No description provided for @scheduleNeedDays.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'至少選擇一天'**
+  String get scheduleNeedDays;
+
+  /// No description provided for @scheduleNeedRange.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'至少新增一個時間段'**
+  String get scheduleNeedRange;
+
+  /// No description provided for @scheduleRangeInvalid.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'開始與結束時間不能相同'**
+  String get scheduleRangeInvalid;
+
+  /// No description provided for @scheduleHint.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'時段結束後，目前歌曲播完會自動停下或切換到下一份列表。'**
+  String get scheduleHint;
+
+  /// No description provided for @weekdayMon.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'一'**
+  String get weekdayMon;
+
+  /// No description provided for @weekdayTue.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'二'**
+  String get weekdayTue;
+
+  /// No description provided for @weekdayWed.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'三'**
+  String get weekdayWed;
+
+  /// No description provided for @weekdayThu.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'四'**
+  String get weekdayThu;
+
+  /// No description provided for @weekdayFri.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'五'**
+  String get weekdayFri;
+
+  /// No description provided for @weekdaySat.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'六'**
+  String get weekdaySat;
+
+  /// No description provided for @weekdaySun.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'日'**
+  String get weekdaySun;
+
+  /// No description provided for @playlistInterrupted.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'點歌優先播放中 · 自建列表暫停於 {time}'**
+  String playlistInterrupted(String time);
+
+  /// No description provided for @playlistResumeHint.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'點歌播完後從 {time} 繼續'**
+  String playlistResumeHint(String time);
+
+  /// No description provided for @searchAdd.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'搜尋新增'**
+  String get searchAdd;
+
+  /// No description provided for @searchSongsTitle.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'搜尋歌曲'**
+  String get searchSongsTitle;
+
+  /// No description provided for @searchSongsHint.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'歌名或歌手'**
+  String get searchSongsHint;
+
+  /// No description provided for @searchStartHint.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'輸入關鍵詞搜尋曲庫'**
+  String get searchStartHint;
+
+  /// No description provided for @searchNoResult.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'沒有找到符合的歌曲'**
+  String get searchNoResult;
+
+  /// No description provided for @searchFailed.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'搜尋失敗，請稍後再試'**
+  String get searchFailed;
+
+  /// No description provided for @searchAll.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'全部'**
+  String get searchAll;
+
+  /// No description provided for @searchLocal.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'本地'**
+  String get searchLocal;
+
+  /// No description provided for @searchWebdav.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'WebDAV'**
+  String get searchWebdav;
+
+  /// No description provided for @searchOnline.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'線上'**
+  String get searchOnline;
+
+  /// No description provided for @addToPlaylist.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'新增'**
+  String get addToPlaylist;
+
+  /// No description provided for @alreadyInPlaylist.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'已在列表'**
+  String get alreadyInPlaylist;
+
+  /// No description provided for @removeFromPlaylist.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'從列表移除'**
+  String get removeFromPlaylist;
+
+  /// No description provided for @deletePlaylist.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'刪除列表'**
+  String get deletePlaylist;
+
+  /// No description provided for @deletePlaylistConfirm.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'刪除「{name}」？歌曲不會從曲庫刪除。'**
+  String deletePlaylistConfirm(String name);
+
+  /// No description provided for @playPlaylist.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'播放列表'**
+  String get playPlaylist;
+
+  /// No description provided for @pausePlaylist.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'暫停列表'**
+  String get pausePlaylist;
+
+  /// No description provided for @playlistWaitingRequests.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'點歌優先中，結束後自動繼續'**
+  String get playlistWaitingRequests;
+
+  /// No description provided for @playlistNoSongs.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'列表裡還沒有歌曲'**
+  String get playlistNoSongs;
+
+  /// No description provided for @playlistSearchUnavailable.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'還沒有可搜尋的音源'**
+  String get playlistSearchUnavailable;
+
+  /// No description provided for @playlistSwitchHint.
+  ///
+  /// In zh_Hant, this message translates to:
+  /// **'切換列表不影響點歌插播。'**
+  String get playlistSwitchHint;
+
   /// No description provided for @library.
   ///
   /// In zh_Hant, this message translates to:

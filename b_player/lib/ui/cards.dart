@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 
 import '../l10n/l10n.dart';
 import '../state/app_state.dart';
+import '../state/self_playlist.dart';
 import '../theme.dart';
+import 'playlist_format.dart';
 
 class Panel extends StatelessWidget {
   const Panel({super.key, required this.child, this.padding = const EdgeInsets.all(14)});
@@ -128,8 +130,7 @@ class NowPlayingCard extends StatelessWidget {
     final t = AppL10n.of(context);
     return Panel(
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        CardHead(t.nowPlaying,
-            trailing: np == null ? t.queueEmpty : t.queuePosition(state.queue.length)),
+        CardHead(t.nowPlaying, trailing: _trailing(t, np)),
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           CoverArt(uri: state.coverUri, size: compact ? 84 : 132),
           SizedBox(width: compact ? 12 : 14),
@@ -160,6 +161,10 @@ class NowPlayingCard extends StatelessWidget {
               _TimeRow(state: state),
               const SizedBox(height: 8),
               _Controls(state: state, compact: compact),
+              if (np != null) ...[
+                const SizedBox(height: 10),
+                _PlaybackSource(state: state, compact: compact),
+              ],
               if (state.audioOutput?.message != null) ...[
                 const SizedBox(height: 10),
                 _ErrorBanner(text: state.audioOutput!.message!),
@@ -171,6 +176,102 @@ class NowPlayingCard extends StatelessWidget {
             ]),
           ),
         ]),
+      ]),
+    );
+  }
+
+  String _trailing(AppL10n t, QueueItem? np) {
+    if (np == null) return t.queueEmpty;
+    if (state.queue.isNotEmpty) return t.queuePosition(state.queue.length);
+    final playlist = state.activePlaylist;
+    if (playlist != null && playlist.tracks.isNotEmpty) {
+      return t.playlistPosition(playlist.index + 1, playlist.tracks.length);
+    }
+    return t.queueEmpty;
+  }
+}
+
+/// 当前出声来源：点歌队列优先，队列空时才是自建列表。
+class _PlaybackSource extends StatelessWidget {
+  const _PlaybackSource({required this.state, required this.compact});
+  final AppState state;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppL10n.of(context);
+    final queueMode = state.queue.isNotEmpty;
+    final playlist = state.activePlaylist;
+    final String title;
+    final String status;
+    final String chip;
+    final IconData icon;
+    var accent = queueMode;
+    if (queueMode) {
+      title = t.requestQueue;
+      status = '${t.priorityTag} · ${t.playlistCount(state.queue.length)}';
+      chip = t.priorityTag;
+      icon = Icons.bolt_rounded;
+    } else if (playlist != null) {
+      title = '${t.selfPlaylists} · ${playlist.name}';
+      final mode = playlist.mode == PlaylistMode.sequential ? t.sequential : t.shuffle;
+      status = '$mode · ${state.playing ? t.playingNow : t.paused}';
+      final active = playlist.schedule.enabled &&
+          playlist.schedule.canRun &&
+          state.activePlaylistInWindow;
+      accent = active;
+      chip = playlist.schedule.enabled
+          ? (active
+              ? t.scheduleActiveNow
+              : (playlistScheduleLabel(playlist.schedule).isEmpty
+                  ? t.schedule
+                  : playlistScheduleLabel(playlist.schedule)))
+          : t.scheduleOff;
+      icon = Icons.queue_music_rounded;
+    } else {
+      return const SizedBox.shrink();
+    }
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: compact ? 9 : 11, vertical: compact ? 7 : 9),
+      decoration: BoxDecoration(
+        color: C.panel2.withValues(alpha: .55),
+        border: Border.all(color: C.line),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(children: [
+        Icon(icon, size: 16, color: accent ? C.acc : C.dim),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: compact ? 11.5 : 12,
+                  fontWeight: FontWeight.w600,
+                  color: C.txt,
+                )),
+            const SizedBox(height: 1),
+            Text(status,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 10.5, color: C.faint)),
+          ]),
+        ),
+        const SizedBox(width: 8),
+        Container(
+          constraints: BoxConstraints(maxWidth: compact ? 92 : 130),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(
+            color: accent ? C.acc.withValues(alpha: .12) : C.panel,
+            border: Border.all(color: accent ? C.acc.withValues(alpha: .4) : C.line),
+            borderRadius: BorderRadius.circular(99),
+          ),
+          child: Text(chip,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 10, color: accent ? C.acc : C.dim)),
+        ),
       ]),
     );
   }
@@ -452,163 +553,3 @@ class _RoundBtn extends StatelessWidget {
       );
 }
 
-// ---------------- 队列 ----------------
-
-class QueueCard extends StatelessWidget {
-  const QueueCard({super.key, required this.state, this.compact = false});
-  final AppState state;
-  final bool compact;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = AppL10n.of(context);
-    return Panel(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          CardHead(t.queue, trailing: t.queueLimit(state.queue.length)),
-          if (state.queue.isEmpty)
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 22),
-                child: Center(child: Text(t.queueEmpty, style: kMini)),
-              ),
-            )
-          else
-            Expanded(
-              child: ReorderableListView.builder(
-                padding: EdgeInsets.zero,
-                buildDefaultDragHandles: false,
-                itemCount: state.queue.length,
-                onReorderItem: (from, to) => _confirmMove(context, from, to),
-                itemBuilder: (context, i) {
-                  final it = state.queue[i];
-                  return ReorderableDelayedDragStartListener(
-                    key: ObjectKey(it),
-                    index: i,
-                    child: _QueueRow(
-                      index: i,
-                      item: it,
-                      head: i == 0,
-                      playing: i == 0 && state.playing,
-                      onDelete: () => state.removeAt(i),
-                    ),
-                  );
-                },
-              ),
-            ),
-        ]),
-      );
-  }
-
-  Future<void> _confirmMove(BuildContext context, int from, int to) async {
-    if (from == to) return;
-    final item = state.queue[from];
-    final t = AppL10n.of(context);
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => _ConfirmDialog(text: t.moveToPosition(item.title, to + 1)),
-    );
-    if (ok == true) state.move(from, to);
-  }
-}
-
-class _QueueRow extends StatelessWidget {
-  const _QueueRow({required this.index, required this.item, required this.head, required this.playing, this.onDelete});
-  final int index;
-  final QueueItem item;
-  final bool head;
-  final bool playing;
-  final VoidCallback? onDelete;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = AppL10n.of(context);
-    return Container(
-        padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 6),
-        decoration: BoxDecoration(
-          border: Border(top: BorderSide(color: C.line)),
-          gradient: index == 0
-              ? LinearGradient(colors: [C.acc.withValues(alpha: .07), Colors.transparent])
-              : null,
-        ),
-        child: Row(children: [
-          SizedBox(
-            width: 22,
-            child: Text('${index + 1}', textAlign: TextAlign.right, style: kNums.copyWith(fontSize: 11, color: C.faint)),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 13.5, color: C.txt)),
-              const SizedBox(height: 2),
-              Row(children: [
-                Flexible(
-                  child: Text(
-                      item.durationMs > 0 ? '${item.artist} · ${fmtMs(item.durationMs)}' : item.artist,
-                      maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 11, color: C.faint)),
-                ),
-                const SizedBox(width: 6),
-                // 没带桌号的曲目（多为对接方漏传 seat）什么都不显示：
-                // 挂个「本机」标签等于把缺失当成一种身份，反而误导。
-                if (item.seat != null)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: C.panel2,
-                      border: Border.all(color: C.line),
-                      borderRadius: BorderRadius.circular(99),
-                    ),
-                    child: Text(item.seat!, style: TextStyle(fontSize: 10.5, color: C.dim)),
-                  ),
-              ]),
-            ]),
-          ),
-          if (head)
-            Text(playing ? t.playingNow : t.paused,
-                style: TextStyle(fontSize: 11, color: playing ? C.acc : C.dim))
-          else
-            IconButton(
-              onPressed: onDelete,
-              iconSize: 15,
-              visualDensity: VisualDensity.compact,
-              splashRadius: 16,
-              color: C.faint,
-              icon: const Icon(Icons.close_rounded),
-              tooltip: t.removeFromQueue,
-            ),
-        ]),
-      );
-  }
-}
-
-class _ConfirmDialog extends StatelessWidget {
-  const _ConfirmDialog({required this.text});
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = AppL10n.of(context);
-    return Dialog(
-        backgroundColor: C.panel2,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(18, 16, 18, 12),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(text, style: TextStyle(fontSize: 13.5, color: C.txt)),
-            const SizedBox(height: 16),
-            Row(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.end, children: [
-              TextButton(onPressed: () => Navigator.pop(context, false),
-                  child: Text(t.cancel, style: TextStyle(color: C.dim))),
-              const SizedBox(width: 4),
-              FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                style: FilledButton.styleFrom(backgroundColor: C.acc, foregroundColor: C.onAcc),
-                child: Text(t.confirm),
-              ),
-            ]),
-          ]),
-        ),
-      );
-  }
-}

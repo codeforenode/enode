@@ -321,6 +321,204 @@ class AppL10nEn extends AppL10n {
   String get removeFromQueue => 'Remove from queue';
 
   @override
+  String get requestQueue => 'Song requests';
+
+  @override
+  String get priorityTag => 'Priority';
+
+  @override
+  String get noRequests => 'No requests';
+
+  @override
+  String get selfPlaylists => 'My playlists';
+
+  @override
+  String get newPlaylist => 'New playlist';
+
+  @override
+  String get createPlaylistTitle => 'New playlist';
+
+  @override
+  String get playlistName => 'Playlist name';
+
+  @override
+  String get playlistNameHint => 'e.g. Lunch service';
+
+  @override
+  String get playlistNameRequired => 'Enter a playlist name';
+
+  @override
+  String get playlistMode => 'Play order';
+
+  @override
+  String get sequential => 'Sequential';
+
+  @override
+  String get shuffle => 'Shuffle';
+
+  @override
+  String get playlistEmptyHint =>
+      'This playlist is empty. Tap \"Search to add\".';
+
+  @override
+  String get playlistNoLists => 'No playlists yet';
+
+  @override
+  String get playlistNoListsHint =>
+      'Create one to play in order or shuffle, and switch automatically by schedule.';
+
+  @override
+  String playlistCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count songs',
+      one: '1 song',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String playlistPosition(int index, int total) {
+    return 'Track $index of $total';
+  }
+
+  @override
+  String get schedule => 'Schedule';
+
+  @override
+  String get scheduleOff => 'No schedule';
+
+  @override
+  String get scheduleActiveNow => 'In session';
+
+  @override
+  String get scheduleTitle => 'Play schedule';
+
+  @override
+  String get scheduleEnable => 'Play by schedule';
+
+  @override
+  String get scheduleDays => 'Days';
+
+  @override
+  String get scheduleRanges => 'Time ranges';
+
+  @override
+  String get scheduleAddRange => 'Add range';
+
+  @override
+  String get scheduleNeedDays => 'Select at least one day';
+
+  @override
+  String get scheduleNeedRange => 'Add at least one time range';
+
+  @override
+  String get scheduleRangeInvalid => 'Start and end cannot be the same';
+
+  @override
+  String get scheduleHint =>
+      'When the session ends, the current song finishes and playback stops or switches to the next playlist.';
+
+  @override
+  String get weekdayMon => 'Mon';
+
+  @override
+  String get weekdayTue => 'Tue';
+
+  @override
+  String get weekdayWed => 'Wed';
+
+  @override
+  String get weekdayThu => 'Thu';
+
+  @override
+  String get weekdayFri => 'Fri';
+
+  @override
+  String get weekdaySat => 'Sat';
+
+  @override
+  String get weekdaySun => 'Sun';
+
+  @override
+  String playlistInterrupted(String time) {
+    return 'Song requests playing · playlist paused at $time';
+  }
+
+  @override
+  String playlistResumeHint(String time) {
+    return 'Resumes at $time after requests';
+  }
+
+  @override
+  String get searchAdd => 'Search to add';
+
+  @override
+  String get searchSongsTitle => 'Search songs';
+
+  @override
+  String get searchSongsHint => 'Title or artist';
+
+  @override
+  String get searchStartHint => 'Enter a keyword to search the library';
+
+  @override
+  String get searchNoResult => 'No matching songs';
+
+  @override
+  String get searchFailed => 'Search failed. Try again later.';
+
+  @override
+  String get searchAll => 'All';
+
+  @override
+  String get searchLocal => 'Local';
+
+  @override
+  String get searchWebdav => 'WebDAV';
+
+  @override
+  String get searchOnline => 'Online';
+
+  @override
+  String get addToPlaylist => 'Add';
+
+  @override
+  String get alreadyInPlaylist => 'Already added';
+
+  @override
+  String get removeFromPlaylist => 'Remove from playlist';
+
+  @override
+  String get deletePlaylist => 'Delete playlist';
+
+  @override
+  String deletePlaylistConfirm(String name) {
+    return 'Delete \"$name\"? Songs stay in the library.';
+  }
+
+  @override
+  String get playPlaylist => 'Play playlist';
+
+  @override
+  String get pausePlaylist => 'Pause playlist';
+
+  @override
+  String get playlistWaitingRequests =>
+      'Requests first; resumes after the queue';
+
+  @override
+  String get playlistNoSongs => 'This playlist has no songs';
+
+  @override
+  String get playlistSearchUnavailable => 'No searchable source yet';
+
+  @override
+  String get playlistSwitchHint =>
+      'Switching playlists does not affect song requests.';
+
+  @override
   String get library => 'Library';
 
   @override

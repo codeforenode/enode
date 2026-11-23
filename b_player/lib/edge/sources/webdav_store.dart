@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 
+import '../atomic_json.dart';
 import '../music_info.dart';
 
 /// 一个 WebDAV 服务器的曲目索引。远程曲目没有本地根目录，
@@ -98,9 +99,7 @@ class WebDavIndexStore {
 
   Future<WebDavIndex?> read(String id, String base) async {
     try {
-      final file = indexFile(id);
-      if (!await file.exists()) return null;
-      final decoded = jsonDecode(await file.readAsString());
+      final decoded = await AtomicJsonFile(indexFile(id)).read();
       return WebDavIndex.fromJson(decoded, base);
     } catch (_) {
       return null;
@@ -108,20 +107,63 @@ class WebDavIndexStore {
   }
 
   Future<void> write(String id, WebDavIndex index) async {
-    await Directory(directory).create(recursive: true);
-    final file = indexFile(id);
-    final tmp = File('${file.path}.tmp');
-    await tmp.writeAsString(jsonEncode(index.toJson()), flush: true);
-    if (await file.exists()) await file.delete();
-    await tmp.rename(file.path);
+    await AtomicJsonFile(indexFile(id)).write(index.toJson());
   }
 
   /// 封面落盘名按 URL 哈希，同一张图不会反复下载。
-  Future<File> artFile(String id, String url, String extension) async {
+  static String artName(String url, String extension) {
     final digest = sha256.convert(utf8.encode(url)).toString().substring(0, 24);
+    return '$digest$extension';
+  }
+
+  Future<File> artFile(String id, String url, String extension) async {
     final dir = artDir(id);
     await dir.create(recursive: true);
-    return File(p.join(dir.path, '$digest$extension'));
+    return File(p.join(dir.path, artName(url, extension)));
+  }
+
+  /// 单台服务器的封面缓存预算；超出后按最久未用（mtime）先删。
+  static const artBudgetBytes = 200 * 1024 * 1024;
+
+  /// 同步完成后调用：清掉已不在曲库里的封面，再把总量压到 [maxBytes] 以内。
+  ///
+  /// [keepNames] 用 [artName] 生成。封面是纯缓存，删错了下次播放会重下，
+  /// 所以这里只按预算兜底，不做精确的引用计数。
+  Future<void> pruneArt(
+    String id,
+    Set<String> keepNames, {
+    int maxBytes = artBudgetBytes,
+  }) async {
+    final dir = artDir(id);
+    if (!await dir.exists()) return;
+    final kept = <({File file, int size, DateTime modified})>[];
+    try {
+      await for (final item in dir.list()) {
+        if (item is! File) continue;
+        if (!keepNames.contains(p.basename(item.path))) {
+          try {
+            await item.delete();
+          } catch (_) {}
+          continue;
+        }
+        try {
+          final stat = await item.stat();
+          kept.add((file: item, size: stat.size, modified: stat.modified));
+        } catch (_) {}
+      }
+    } catch (_) {
+      return;
+    }
+    var total = kept.fold<int>(0, (sum, item) => sum + item.size);
+    if (total <= maxBytes) return;
+    kept.sort((a, b) => a.modified.compareTo(b.modified));
+    for (final item in kept) {
+      if (total <= maxBytes) break;
+      try {
+        await item.file.delete();
+        total -= item.size;
+      } catch (_) {}
+    }
   }
 
   Future<void> clear(String id) async {

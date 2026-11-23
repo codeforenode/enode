@@ -11,6 +11,7 @@ import '../state/app_update.dart';
 import '../theme.dart';
 import 'cards.dart';
 import 'form_bits.dart';
+import 'playlist_card.dart';
 import 'settings_dialog.dart';
 import 'sources_panel.dart';
 import 'update_bits.dart';
@@ -102,7 +103,7 @@ class _ShellState extends State<Shell> {
                 child: SingleChildScrollView(child: NowPlayingCard(state: widget.state)),
               ),
               const SizedBox(width: 14),
-              Expanded(flex: 130, child: QueueCard(state: widget.state)),
+              Expanded(flex: 130, child: PlaylistCard(state: widget.state)),
             ]),
           ),
         ),
@@ -126,7 +127,7 @@ class _ShellState extends State<Shell> {
             child: Column(children: [
               SingleChildScrollView(child: NowPlayingCard(state: widget.state, compact: true)),
               const SizedBox(height: 10),
-              Expanded(child: QueueCard(state: widget.state, compact: true)),
+              Expanded(child: PlaylistCard(state: widget.state)),
             ]),
           ),
         ),

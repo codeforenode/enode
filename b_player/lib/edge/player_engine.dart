@@ -13,7 +13,14 @@ abstract class AudioEngine {
 
   /// [uri] 可能是本地 `file:`，也可能是在线音源/WebDAV 取到的 http(s) 地址。
   /// [headers] 用于需要认证的远程音源（如 WebDAV Basic），凭据不拼进 URL。
-  Future<void> open(Uri uri, {bool autoplay = true, Map<String, String>? headers});
+  /// [start] 交给后端在加载媒体时生效；不要用 open 之后立刻 seek 代替——
+  /// libmpv 还没加载完文件时 seek 会被丢掉，续播就会从 0 开始。
+  Future<void> open(
+    Uri uri, {
+    bool autoplay = true,
+    Map<String, String>? headers,
+    Duration? start,
+  });
   Future<void> play();
   Future<void> pause();
   Future<void> seek(Duration position);
@@ -83,11 +90,17 @@ class MediaKitEngine implements AudioEngine, AudioOutputEngine {
   Stream<String> get errorStream => _player.stream.error;
 
   @override
-  Future<void> open(Uri uri, {bool autoplay = true, Map<String, String>? headers}) =>
+  Future<void> open(
+    Uri uri, {
+    bool autoplay = true,
+    Map<String, String>? headers,
+    Duration? start,
+  }) =>
       _player.open(
         Media(
           uri.toString(),
           httpHeaders: headers == null || headers.isEmpty ? null : headers,
+          start: start,
         ),
         play: autoplay,
       );

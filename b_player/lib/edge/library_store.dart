@@ -1,8 +1,8 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import 'atomic_json.dart';
 import 'music_info.dart';
 
 /// 单个音源的本地索引快照。对应 any-listen 的 `music_library` 缓存表：
@@ -63,9 +63,7 @@ class LibraryStore {
 
   Future<LibraryIndex?> read() async {
     try {
-      final f = file;
-      if (!await f.exists()) return null;
-      final decoded = jsonDecode(await f.readAsString());
+      final decoded = await AtomicJsonFile(file).read();
       if (decoded is! Map) return null;
       return LibraryIndex.fromJson(decoded.cast<String, Object?>());
     } catch (_) {
@@ -73,18 +71,7 @@ class LibraryStore {
     }
   }
 
-  Future<void> write(LibraryIndex index) async {
-    await Directory(directory).create(recursive: true);
-    final tmp = File('${file.path}.tmp');
-    await tmp.writeAsString(jsonEncode(index.toJson()), flush: true);
-    if (await file.exists()) await file.delete();
-    await tmp.rename(file.path);
-  }
+  Future<void> write(LibraryIndex index) => AtomicJsonFile(file).write(index.toJson());
 
-  Future<void> clear() async {
-    try {
-      final f = file;
-      if (await f.exists()) await f.delete();
-    } catch (_) {}
-  }
+  Future<void> clear() => AtomicJsonFile(file).delete();
 }

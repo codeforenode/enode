@@ -5,10 +5,12 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'lx_config.dart';
 import '../../l10n/l10n.dart';
+import '../atomic_json.dart';
 
 /// 脚本头部注释里声明的元信息（`@name / @version / @author / @description / @homepage`）。
 class LxSourceMeta {
@@ -190,13 +192,80 @@ class LxSourceEntry {
 }
 
 /// 多音源的持久化：顺序即优先级，`enabled` 对应 UI 上的勾选。
+///
+/// 脚本体积随音源数量增长，不能塞进 prefs（每次写都会整包重写 prefs 文件）。
+/// 元信息写 `data/lx/sources.json`，脚本正文按 id 各存 `data/lx/scripts/<id>.js`；
+/// 旧版本整包放在 `lx.sources.v2`，读到后迁移并保留一版做回滚兜底。
 class LxSourceStore {
-  static const _key = 'lx.sources.v2';
+  LxSourceStore([this._directory]);
+
+  final Directory? _directory;
+
+  static const _legacyKey = 'lx.sources.v2';
+
+  Future<Directory> _dir() async {
+    final explicit = _directory;
+    if (explicit != null) return explicit;
+    final support = await getApplicationSupportDirectory();
+    return Directory(p.join(support.path, 'data', 'lx'));
+  }
+
+  File _indexFile(Directory dir) => File(p.join(dir.path, 'sources.json'));
+
+  Directory _scriptsDir(Directory dir) => Directory(p.join(dir.path, 'scripts'));
+
+  /// id 来自 [LxSourceEntry.idFor]（`lx_` + hex），旧数据可能是任意串；
+  /// 落成文件名前把路径分隔符等替换掉，防止写到 scripts 目录外。
+  static String _scriptName(String id) =>
+      '${id.replaceAll(RegExp(r'[^A-Za-z0-9_.-]'), '_')}.js';
 
   Future<List<LxSourceEntry>> load() async {
+    Directory dir;
+    try {
+      dir = await _dir();
+    } catch (_) {
+      // 无 path_provider 的测试/预览环境：只读旧 prefs。
+      return _loadLegacy();
+    }
+    final raw = await AtomicJsonFile(_indexFile(dir)).read();
+    if (raw is Map) {
+      final entries = <LxSourceEntry>[];
+      final list = raw['sources'];
+      if (list is List) {
+        for (final item in list) {
+          if (item is! Map) continue;
+          final id = item['id'] is String ? item['id'] as String : '';
+          if (id.isEmpty) continue;
+          String script;
+          try {
+            final file = File(p.join(_scriptsDir(dir).path, _scriptName(id)));
+            if (!await file.exists()) continue;
+            script = await file.readAsString();
+          } catch (_) {
+            continue;
+          }
+          if (script.trim().isEmpty) continue;
+          final entry = LxSourceEntry.fromJson(
+            {...Map<String, Object?>.from(item), 'script': script},
+          );
+          if (entry != null) entries.add(entry);
+        }
+      }
+      return entries;
+    }
+    final legacy = await _loadLegacy();
+    if (legacy.isNotEmpty) {
+      try {
+        await save(legacy);
+      } catch (_) {}
+    }
+    return legacy;
+  }
+
+  Future<List<LxSourceEntry>> _loadLegacy() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_key);
+      final raw = prefs.getString(_legacyKey);
       if (raw == null || raw.trim().isEmpty) return const [];
       final decoded = jsonDecode(raw);
       if (decoded is! List) return const [];
@@ -209,15 +278,60 @@ class LxSourceStore {
   }
 
   Future<void> save(List<LxSourceEntry> sources) async {
+    Directory dir;
+    try {
+      dir = await _dir();
+    } catch (_) {
+      await _saveLegacy(sources);
+      return;
+    }
+    try {
+      final scripts = _scriptsDir(dir);
+      await scripts.create(recursive: true);
+      final ids = <String>{};
+      for (final source in sources) {
+        final name = _scriptName(source.id);
+        ids.add(name);
+        final file = File(p.join(scripts.path, name));
+        try {
+          if (await file.exists() && await file.readAsString() == source.script) {
+            continue;
+          }
+        } catch (_) {}
+        // 先写临时文件再改名：中断最多丢这一条的新脚本，不会留半截 JS。
+        final tmp = File('${file.path}.tmp');
+        await tmp.writeAsString(source.script, flush: true);
+        await tmp.rename(file.path);
+      }
+      await AtomicJsonFile(_indexFile(dir)).write({
+        'v': 2,
+        'sources': [
+          for (final source in sources) source.toJson()..remove('script'),
+        ],
+      });
+      // 索引已经落盘，才清理不再被引用的脚本。
+      await for (final item in scripts.list()) {
+        if (item is! File) continue;
+        final name = p.basename(item.path);
+        if (!name.endsWith('.js') || ids.contains(name)) continue;
+        try {
+          await item.delete();
+        } catch (_) {}
+      }
+    } catch (_) {
+      // 落盘失败不阻断本次会话，下次保存会重试。
+    }
+  }
+
+  /// 兜底：没有应用目录时仍按旧方式写 prefs（测试/桌面预览）。
+  Future<void> _saveLegacy(List<LxSourceEntry> sources) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(
-        _key,
+        _legacyKey,
         jsonEncode([for (final source in sources) source.toJson()]),
       );
-    } catch (_) {
-      // 无插件环境（单元测试/桌面预览）下不阻断。
-    }
+    } catch (_) {}
   }
 
   /// 同地址再次导入视为更新：保留 id、勾选状态与排序，只换脚本。

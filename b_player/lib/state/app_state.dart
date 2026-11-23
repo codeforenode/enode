@@ -29,6 +29,7 @@ import '../log.dart';
 import 'audio_output.dart';
 import 'cast_settings.dart';
 import 'lrc.dart';
+import 'self_playlist.dart';
 
 class QueueItem {
   QueueItem({
@@ -63,6 +64,7 @@ class AppState extends ChangeNotifier {
     this.webDav,
     this.engine,
     this.watchdogPeriod = const Duration(seconds: 8),
+    PlaylistStore? playlistStore,
   })  : demoMode = library == null,
         library = library ?? Library.demo() {
     queue = demoMode ? _demoQueue(this.library) : <QueueItem>[];
@@ -70,6 +72,7 @@ class AppState extends ChangeNotifier {
     // 出厂歌单要读 asset 并检索上游，属于副作用，交给入口显式触发
     // （测试构造 AppState 时不该联网，也不该依赖 binding）。
     featured = FeaturedService(library: this.library);
+    _playlistStore = playlistStore ?? PlaylistStore();
     edge = EdgeNode(
       search: (q, offset, limit) => this.library.searchAsync(q, offset: offset, limit: limit),
       enqueue: _handleEnqueue,
@@ -95,6 +98,7 @@ class AppState extends ChangeNotifier {
       webDav!.addListener(_onWebDavChanged);
     }
     unawaited(_warmArt(nowPlaying?.trackKey));
+    unawaited(_loadPlaylists());
     if (localSource != null) unawaited(scanLibrary());
   }
 
@@ -148,6 +152,41 @@ class AppState extends ChangeNotifier {
   /// 0..1；引擎存在时同步到后端。
   double volume = .7;
 
+  // ---------------- 自建列表 ----------------
+
+  /// 列表顺序也是时段重叠时的优先级；同一时间只播放当前激活的一份。
+  List<SelfPlaylist> _playlists = [];
+  String? _activePlaylistId;
+  QueueItem? _localCurrent;
+  bool _localEnabled = false;
+  bool _localNeedsLoad = false;
+
+  /// 点歌插播前自建列表是否正在播；队列清空后只有它为真才自动续播。
+  bool _localWasPlayingBeforeQueue = false;
+
+  /// 操作员手动暂停过列表：定时时段开始时不要每 20 秒把他叫醒。
+  bool _autoStartSuppressed = false;
+
+  /// 当前歌曲播完后要执行的时段切换/停止。
+  bool _scheduleStopPending = false;
+  String? _scheduledNextId;
+
+  bool _playlistsLoaded = false;
+  Timer? _scheduleTimer;
+  DateTime? _lastLocalPersistAt;
+  late final PlaylistStore _playlistStore;
+  Future<void> _playlistSaveChain = Future.value();
+
+  /// 进度写只保留最新一份：磁盘慢时补写最新快照，不让任务在链上堆积。
+  String? _pendingState;
+  bool _stateWriteScheduled = false;
+
+  /// 时段重新开始时，超过这个时长没播过就从第一首开始，别接着昨天的位置。
+  static const _playlistFreshMs = 6 * 60 * 60 * 1000;
+
+  /// 每次开始/停止本地播放都 +1，异步取链回来时据此丢弃过期结果。
+  int _localGen = 0;
+
   bool _scanning = false;
   int _scanned = 0;
   int _scanTotal = 0;
@@ -185,7 +224,46 @@ class AppState extends ChangeNotifier {
   String? get scanError => _scanError;
   StoragePermissionState? get permission => _permission;
 
-  QueueItem? get nowPlaying => queue.isEmpty ? null : queue.first;
+  /// 输出优先级：有点歌就播点歌，队列清了才轮到自建列表。
+  QueueItem? get nowPlaying {
+    if (queue.isNotEmpty) return queue.first;
+    return _localEnabled ? _localCurrent : null;
+  }
+
+  List<SelfPlaylist> get playlists => List.unmodifiable(_playlists);
+
+  SelfPlaylist? get activePlaylist {
+    final id = _activePlaylistId;
+    for (final p in _playlists) {
+      if (p.id == id) return p;
+    }
+    return _playlists.isEmpty ? null : _playlists.first;
+  }
+
+  String? get activePlaylistId => activePlaylist?.id;
+
+  /// 当前是不是自建列表在出声（而非仅仅选中）。
+  bool get localOutputActive =>
+      queue.isEmpty && _localEnabled && _localCurrent != null;
+
+  /// 点歌插播期间，自建列表是否正在让位；UI 用来展示「播完从 xx:xx 继续」。
+  bool get localInterrupted =>
+      queue.isNotEmpty && _localEnabled && _localWasPlayingBeforeQueue;
+
+  bool get activePlaylistInWindow =>
+      activePlaylist?.schedule.isActiveAt(DateTime.now()) ?? false;
+
+  bool get canSearchSongs => library.canSearch;
+
+  bool get hasOnlineSearchSources =>
+      onlineSources.any((s) => s.enabled);
+
+  bool get hasWebDavTracks =>
+      library.tracks.any((t) => !t.isLocal && t.sourceId != 'lx');
+
+  /// 当前列表的保存进度；点歌插播时用来展示暂停在哪。
+  int get localSavedPosition => activePlaylist?.positionMs ?? 0;
+
 
   /// 当前曲目的歌词行；切歌时由 [_warmArt] 重新解析。
   List<LyricLine> get lyricLines => _lyricLines;
@@ -653,6 +731,593 @@ class AppState extends ChangeNotifier {
     return manager.test(server);
   }
 
+  // ---------------- 自建列表 ----------------
+
+  Future<void> _loadPlaylists() async {
+    PlaylistSnapshot? snapshot;
+    try {
+      snapshot = await _playlistStore.load();
+    } catch (e) {
+      EnodeLog.w('playlist', '读取自建列表失败，按空列表继续', e);
+    }
+    if (_disposed) return;
+    if (snapshot != null) {
+      _playlists = snapshot.lists;
+      _activePlaylistId = snapshot.activeId;
+    }
+    for (final p in _playlists) {
+      p.normalize();
+    }
+    if (!_playlists.any((p) => p.id == _activePlaylistId)) {
+      _activePlaylistId = _playlists.isEmpty ? null : _playlists.first.id;
+    }
+    _playlistsLoaded = true;
+    _restartScheduleTimer();
+    notifyListeners();
+    _persistPlaylistState();
+    if (queue.isNotEmpty) return;
+
+    final scheduled = _scheduledListNow();
+    if (scheduled == null || _autoStartSuppressed) return;
+    _activePlaylistId = scheduled.id;
+    final stale = _isPlaylistStale(scheduled);
+    if (stale) {
+      scheduled.index = 0;
+      scheduled.positionMs = 0;
+    }
+    _localEnabled = true;
+    playing = true;
+    await _startLocalAtCurrent(resume: !stale);
+  }
+
+  void _restartScheduleTimer() {
+    _scheduleTimer?.cancel();
+    _scheduleTimer = null;
+    if (_disposed || _playlists.isEmpty) return;
+    _scheduleTimer = Timer.periodic(const Duration(seconds: 20), (_) => _checkSchedule());
+  }
+
+  bool _isPlaylistStale(SelfPlaylist p) {
+    if (p.lastPlayedAtMs <= 0) return true;
+    return DateTime.now().millisecondsSinceEpoch - p.lastPlayedAtMs > _playlistFreshMs;
+  }
+
+  SelfPlaylist? _scheduledListNow([DateTime? at]) {
+    final now = at ?? DateTime.now();
+    for (final p in _playlists) {
+      if (p.tracks.isNotEmpty && p.schedule.isActiveAt(now)) return p;
+    }
+    return null;
+  }
+
+  void _checkSchedule() {
+    if (_disposed || queue.isNotEmpty || _playlists.isEmpty) return;
+    final now = DateTime.now();
+    final active = activePlaylist;
+    final scheduled = _scheduledListNow(now);
+
+    if (active != null &&
+        _localEnabled &&
+        active.schedule.enabled &&
+        !active.schedule.isActiveAt(now)) {
+      _scheduledNextId = scheduled?.id;
+      _scheduleStopPending = scheduled == null;
+      // 有声音就让当前这首播完再切；已经暂停/空列表时不要被动叫醒。
+      if (localOutputActive && playing) return;
+      if (_autoStartSuppressed) return;
+      _applyScheduledChange(scheduled);
+      return;
+    }
+
+    if (!localOutputActive && !_autoStartSuppressed) {
+      if (scheduled != null) {
+        _scheduleStopPending = false;
+        _scheduledNextId = null;
+        _activePlaylistId = scheduled.id;
+        final stale = _isPlaylistStale(scheduled);
+        if (stale) {
+          scheduled.index = 0;
+          scheduled.positionMs = 0;
+        }
+        _localEnabled = true;
+        playing = true;
+        EnodeLog.i('playlist', '时段开始，自动播放自建列表《${scheduled.name}》');
+        unawaited(_startLocalAtCurrent(resume: !stale));
+        notifyListeners();
+      }
+      return;
+    }
+
+    _scheduleStopPending = false;
+    _scheduledNextId = null;
+  }
+
+  void _applyScheduledChange(SelfPlaylist? next) {
+    _scheduleStopPending = false;
+    _scheduledNextId = null;
+    if (next == null) {
+      EnodeLog.i('playlist', '时段结束，暂停自建列表');
+      _stopLocalPlayback();
+      return;
+    }
+    _captureLocalPosition();
+    _activePlaylistId = next.id;
+    final stale = _isPlaylistStale(next);
+    if (stale) {
+      next.index = 0;
+      next.positionMs = 0;
+    }
+    _localCurrent = null;
+    _localNeedsLoad = true;
+    _localEnabled = true;
+    playing = true;
+    EnodeLog.i('playlist', '时段切换，改播《${next.name}》');
+    unawaited(_startLocalAtCurrent(resume: !stale));
+    notifyListeners();
+  }
+
+  void _stopLocalPlayback() {
+    _captureLocalPosition();
+    _localGen++;
+    _playGen++;
+    _loading = false;
+    _cancelWatchdog();
+    _localCurrent = null;
+    _localNeedsLoad = false;
+    _localEnabled = false;
+    _localWasPlayingBeforeQueue = false;
+    _scheduleStopPending = false;
+    _scheduledNextId = null;
+    final hadQueue = queue.isNotEmpty;
+    if (!hadQueue) playing = false;
+    if (engine != null) unawaited(engine!.stop());
+    _warmArt(null);
+    notifyListeners();
+    if (!hadQueue) edge.notifyTrackChanged();
+    _persistPlaylistState();
+  }
+
+  QueueItem _itemForEntry(PlaylistEntry entry) {
+    final track = library.byKey(entry.trackKey);
+    return QueueItem(
+      trackKey: track?.trackKey ?? entry.trackKey,
+      title: track?.title ?? entry.title,
+      artist: track?.artist ?? entry.artist,
+      durationMs: track?.durationMs ?? entry.durationMs,
+    );
+  }
+
+  Future<Track?> _remapPlaylistEntry(PlaylistEntry entry) async {
+    final queries = <String>[
+      entry.title,
+      if (entry.artist.isNotEmpty) '${entry.title} ${entry.artist}',
+    ];
+    for (final query in queries) {
+      if (query.trim().isEmpty) continue;
+      try {
+        final page = await library.searchAsync(query, limit: 12, timeout: _remapBudget);
+        final hit = matchCandidate(
+          page.items,
+          trackKey: entry.trackKey,
+          title: entry.title,
+          artist: entry.artist,
+          durationMs: entry.durationMs,
+        );
+        if (hit != null) {
+          library.remember([hit]);
+          return hit;
+        }
+      } catch (_) {
+        // 在线曲目映射不到就按坏链跳过，不能把整份列表卡住。
+      }
+    }
+    return null;
+  }
+
+  /// 从当前 [SelfPlaylist.index] 开始播放；[resume] 为真时从保存位置续播。
+  Future<void> _startLocalAtCurrent({bool resume = true}) async {
+    final playlist = activePlaylist;
+    if (playlist == null || playlist.tracks.isEmpty) {
+      _stopLocalPlayback();
+      return;
+    }
+    final gen = ++_localGen;
+    playlist.normalize();
+    final entry = playlist.current;
+    if (entry == null) {
+      _stopLocalPlayback();
+      return;
+    }
+    var start = resume ? playlist.positionMs : 0;
+    if (start < 0) start = 0;
+    if (entry.durationMs > 0 && start >= entry.durationMs) start = 0;
+    var item = _itemForEntry(entry);
+    _localCurrent = item;
+    _localEnabled = true;
+    _localNeedsLoad = engine != null;
+    playing = true;
+    playlist.lastPlayedAtMs = DateTime.now().millisecondsSinceEpoch;
+    _warmArt(item.trackKey);
+    EnodeLog.i(
+      'playlist',
+      '播放自建列表《${playlist.name}》第 ${playlist.index + 1}/${playlist.tracks.length} 首'
+      '《${item.title}》${resume && start > 0 ? ' 从 ${_fmt(start)} 继续' : ''}',
+    );
+    notifyListeners();
+    if (queue.isNotEmpty) {
+      _localWasPlayingBeforeQueue = true;
+      _localNeedsLoad = true;
+      return;
+    }
+    edge.notifyTrackChanged();
+
+    if (entry.sourceId == 'lx' && library.byKey(item.trackKey) == null) {
+      final mapped = await _remapPlaylistEntry(entry);
+      if (_disposed || gen != _localGen) return;
+      if (mapped != null) {
+        final updated = entry.copyWith(
+          trackKey: mapped.trackKey,
+          title: mapped.title,
+          artist: mapped.artist,
+          durationMs: mapped.durationMs,
+          sourceId: mapped.sourceId,
+        );
+        playlist.tracks[playlist.index] = updated;
+        item = _itemForEntry(updated);
+        _localCurrent = item;
+        _persistPlaylistStructure();
+        edge.notifyTrackChanged();
+      }
+    }
+    if (_disposed || gen != _localGen) return;
+    if (queue.isNotEmpty) {
+      _localWasPlayingBeforeQueue = true;
+      _localNeedsLoad = true;
+      notifyListeners();
+      return;
+    }
+
+    if (engine == null) {
+      item.positionMs = start;
+      _localNeedsLoad = false;
+      notifyListeners();
+      _persistPlaylistState();
+      return;
+    }
+    _localNeedsLoad = false;
+    await _loadCurrent(startAtMs: start);
+    _persistPlaylistState();
+  }
+
+  void _advanceLocal({bool afterFailure = false}) {
+    final playlist = activePlaylist;
+    if (playlist == null || playlist.tracks.isEmpty) {
+      _stopLocalPlayback();
+      return;
+    }
+    if (_scheduleStopPending || _scheduledNextId != null) {
+      SelfPlaylist? next;
+      final id = _scheduledNextId;
+      if (id != null) {
+        for (final p in _playlists) {
+          if (p.id == id) {
+            next = p;
+            break;
+          }
+        }
+      }
+      _applyScheduledChange(next);
+      return;
+    }
+    final old = playlist.index;
+    final next = playlist.nextIndex();
+    if (next < 0) {
+      _stopLocalPlayback();
+      return;
+    }
+    if (afterFailure && next == old) {
+      // 只有一首且放不了：停在错误上，别每 8 秒重试同一首。
+      _stopLocalPlayback();
+      return;
+    }
+    playlist.index = next;
+    playlist.positionMs = 0;
+    playlist.lastPlayedAtMs = DateTime.now().millisecondsSinceEpoch;
+    EnodeLog.i('playlist', '自建列表下一首：第 ${next + 1}/${playlist.tracks.length} 首');
+    unawaited(_startLocalAtCurrent(resume: false));
+    _persistPlaylistState();
+  }
+
+  void _resumeLocalAfterQueue() {
+    final shouldResume = _localEnabled && _localWasPlayingBeforeQueue;
+    _localWasPlayingBeforeQueue = false;
+    if (!shouldResume) {
+      _cancelWatchdog();
+      _playGen++;
+      _loading = false;
+      _localNeedsLoad = true;
+      playing = false;
+      if (engine != null) unawaited(engine!.stop());
+      final np = nowPlaying;
+      unawaited(_warmArt(np?.trackKey));
+      notifyListeners();
+      edge.notifyTrackChanged();
+      return;
+    }
+    final playlist = activePlaylist;
+    if (playlist == null || playlist.tracks.isEmpty) {
+      _stopLocalPlayback();
+      return;
+    }
+    if (playlist.schedule.enabled && !playlist.schedule.isActiveAt(DateTime.now())) {
+      final next = _scheduledListNow();
+      if (next != null) {
+        _applyScheduledChange(next);
+      } else {
+        _stopLocalPlayback();
+      }
+      return;
+    }
+    EnodeLog.i('playlist', '点歌播完，回到自建列表《${playlist.name}》续播');
+    playing = true;
+    unawaited(_startLocalAtCurrent(resume: true));
+  }
+
+  void _captureLocalPosition() {
+    if (queue.isNotEmpty) return;
+    final playlist = activePlaylist;
+    final current = _localCurrent;
+    if (playlist == null || current == null) return;
+    if (!identical(nowPlaying, current)) return;
+    final entry = playlist.current;
+    if (entry == null || entry.trackKey != current.trackKey) return;
+    playlist.positionMs = current.positionMs;
+  }
+
+  PlaylistSnapshot get _playlistSnapshot =>
+      PlaylistSnapshot(lists: _playlists, activeId: _activePlaylistId);
+
+  /// 结构变化（增删曲目、拖序、建删列表、改顺序/时段/名称）：结构 + 状态一起写。
+  void _persistPlaylistStructure() {
+    if (!_playlistsLoaded) return;
+    final snapshot = _playlistSnapshot;
+    final structure = PlaylistStore.encodeStructure(snapshot);
+    final state = PlaylistStore.encodeState(snapshot);
+    _playlistSaveChain = _playlistSaveChain.then((_) async {
+      try {
+        await _playlistStore.writeStructure(structure);
+        await _playlistStore.writeState(state);
+      } catch (e) {
+        EnodeLog.w('playlist', '保存自建列表失败', e);
+      }
+    });
+  }
+
+  /// 播放进度/当前曲目变化：只写几百字节的状态文件，播放中每 10 秒一次。
+  void _persistPlaylistState() {
+    if (!_playlistsLoaded) return;
+    _pendingState = PlaylistStore.encodeState(_playlistSnapshot);
+    if (_stateWriteScheduled) return;
+    _stateWriteScheduled = true;
+    _playlistSaveChain = _playlistSaveChain.then((_) async {
+      while (_pendingState != null) {
+        final encoded = _pendingState!;
+        _pendingState = null;
+        try {
+          await _playlistStore.writeState(encoded);
+        } catch (e) {
+          EnodeLog.w('playlist', '保存播放位置失败', e);
+        }
+      }
+      _stateWriteScheduled = false;
+    });
+  }
+
+  SelfPlaylist createPlaylist(String name, PlaylistMode mode) {
+    final id = 'pl${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}';
+    // 先把旧列表停在当前位置，再切到新列表，否则进度会写进新列表。
+    if (queue.isEmpty && (_localEnabled || _localCurrent != null)) {
+      _stopLocalPlayback();
+    }
+    final playlist = SelfPlaylist(
+      id: id,
+      name: name.trim(),
+      mode: mode,
+      schedule: PlaylistSchedule.defaults(),
+    );
+    _playlists.add(playlist);
+    _activePlaylistId = id;
+    _persistPlaylistStructure();
+    _restartScheduleTimer();
+    notifyListeners();
+    return playlist;
+  }
+
+  void selectPlaylist(String id) {
+    if (_activePlaylistId == id) return;
+    SelfPlaylist? playlist;
+    for (final p in _playlists) {
+      if (p.id == id) {
+        playlist = p;
+        break;
+      }
+    }
+    if (playlist == null) return;
+    _captureLocalPosition();
+    _activePlaylistId = id;
+    _localCurrent = null;
+    _localNeedsLoad = true;
+    _scheduleStopPending = false;
+    _scheduledNextId = null;
+    if (queue.isEmpty && _localEnabled && playing) {
+      playing = true;
+      unawaited(_startLocalAtCurrent(resume: true));
+    } else {
+      playing = queue.isNotEmpty ? playing : false;
+      _warmArt(null);
+      notifyListeners();
+      if (queue.isEmpty) edge.notifyTrackChanged();
+    }
+    _persistPlaylistState();
+  }
+
+  void deletePlaylist(String id) {
+    final index = _playlists.indexWhere((p) => p.id == id);
+    if (index < 0) return;
+    final wasActive = _activePlaylistId == id;
+    if (wasActive) _captureLocalPosition();
+    _playlists.removeAt(index);
+    if (wasActive) {
+      _localGen++;
+      _cancelWatchdog();
+      _localCurrent = null;
+      _localEnabled = false;
+      _localNeedsLoad = false;
+      _localWasPlayingBeforeQueue = false;
+      _scheduleStopPending = false;
+      _scheduledNextId = null;
+      _activePlaylistId = _playlists.isEmpty ? null : _playlists.first.id;
+      if (queue.isEmpty) {
+        _playGen++;
+        _loading = false;
+        playing = false;
+        if (engine != null) unawaited(engine!.stop());
+      }
+    }
+    _restartScheduleTimer();
+    _persistPlaylistStructure();
+    notifyListeners();
+    if (wasActive && queue.isEmpty) {
+      _warmArt(null);
+      edge.notifyTrackChanged();
+    }
+  }
+
+  void setPlaylistMode(String id, PlaylistMode mode) {
+    for (final p in _playlists) {
+      if (p.id == id) {
+        p.setMode(mode);
+        _persistPlaylistStructure();
+        notifyListeners();
+        return;
+      }
+    }
+  }
+
+  void updatePlaylistSchedule(String id, PlaylistSchedule schedule) {
+    for (final p in _playlists) {
+      if (p.id != id) continue;
+      p.schedule = schedule;
+      _persistPlaylistStructure();
+      notifyListeners();
+      _checkSchedule();
+      return;
+    }
+  }
+
+  bool isInPlaylist(String trackKey, {String? playlistId}) {
+    final id = playlistId ?? _activePlaylistId;
+    for (final p in _playlists) {
+      if (p.id == id) return p.contains(trackKey);
+    }
+    return false;
+  }
+
+  bool addToPlaylist(String trackKey, {String? playlistId}) {
+    final id = playlistId ?? _activePlaylistId;
+    SelfPlaylist? playlist;
+    for (final p in _playlists) {
+      if (p.id == id) {
+        playlist = p;
+        break;
+      }
+    }
+    final track = library.byKey(trackKey);
+    if (playlist == null || track == null) return false;
+    final added = playlist.addTrack(PlaylistEntry(
+      trackKey: track.trackKey,
+      title: track.title,
+      artist: track.artist,
+      durationMs: track.durationMs,
+      sourceId: track.sourceId,
+    ));
+    if (!added) return false;
+    _persistPlaylistStructure();
+    notifyListeners();
+    return true;
+  }
+
+  void removePlaylistTrack(int index, {String? playlistId}) {
+    final id = playlistId ?? _activePlaylistId;
+    SelfPlaylist? playlist;
+    for (final p in _playlists) {
+      if (p.id == id) {
+        playlist = p;
+        break;
+      }
+    }
+    if (playlist == null || index < 0 || index >= playlist.tracks.length) return;
+    final active = playlist.id == _activePlaylistId;
+    final currentRemoved = active && queue.isEmpty && index == playlist.index;
+    final wasPlaying = active && _localEnabled && playing;
+    playlist.removeTrackAt(index);
+    if (currentRemoved) {
+      if (playlist.tracks.isEmpty) {
+        _stopLocalPlayback();
+        return;
+      }
+      _localCurrent = null;
+      _localNeedsLoad = true;
+      if (wasPlaying) {
+        unawaited(_startLocalAtCurrent(resume: false));
+      } else {
+        _playGen++;
+        playing = false;
+        if (engine != null) unawaited(engine!.stop());
+        _warmArt(null);
+        notifyListeners();
+        if (queue.isEmpty) edge.notifyTrackChanged();
+      }
+    } else {
+      notifyListeners();
+    }
+    _persistPlaylistStructure();
+  }
+
+  void movePlaylistTrack(int from, int to, {String? playlistId}) {
+    final id = playlistId ?? _activePlaylistId;
+    for (final p in _playlists) {
+      if (p.id != id) continue;
+      p.moveTrack(from, to);
+      _persistPlaylistStructure();
+      notifyListeners();
+      return;
+    }
+  }
+
+  /// 搜索面板用：本机/WebDAV/在线三种来源分开取，避免「全部」里本地命中把在线挤掉。
+  Future<({List<Track> items, int total})> searchForPlaylist(
+    String query, {
+    String filter = 'all',
+    int limit = 30,
+  }) async {
+    final q = query.trim();
+    if (q.isEmpty) return (items: const <Track>[], total: 0);
+    if (filter == 'local') {
+      final page = library.search(q, limit: 200);
+      final items = page.items.where((t) => t.isLocal).take(limit).toList(growable: false);
+      return (items: items, total: items.length);
+    }
+    final page = await library.searchAsync(q, limit: 80, timeout: const Duration(seconds: 5));
+    bool keep(Track t) => switch (filter) {
+          'webdav' => library.registry.byId(t.sourceId)?.kind == 'webdav',
+          'online' => t.sourceId == 'lx',
+          _ => true,
+        };
+    final items = page.items.where(keep).take(limit).toList(growable: false);
+    return (items: items, total: items.length);
+  }
+
   // ---------------- 播放/队列 ----------------
 
   /// 无引擎时的模拟推进：只在测试/演示模式使用。
@@ -660,15 +1325,22 @@ class AppState extends ChangeNotifier {
     final head = nowPlaying;
     if (head == null || !playing) return;
     head.positionMs += 1000;
-    var changedTrack = false;
     if (head.positionMs >= head.durationMs) {
-      queue.removeAt(0);
-      changedTrack = true;
-      if (queue.isEmpty) playing = false;
-      unawaited(_warmArt(nowPlaying?.trackKey));
+      if (queue.isNotEmpty) {
+        _advanceHead();
+      } else if (_localEnabled && _localCurrent != null) {
+        _advanceLocal();
+      } else {
+        playing = false;
+        notifyListeners();
+        edge.notifyTrackChanged();
+      }
+      return;
+    }
+    if (queue.isEmpty && identical(head, _localCurrent)) {
+      activePlaylist?.positionMs = head.positionMs;
     }
     notifyListeners();
-    if (changedTrack) edge.notifyTrackChanged();
   }
 
   void _bindEngine(AudioEngine e) {
@@ -688,6 +1360,18 @@ class AppState extends ChangeNotifier {
     final ms = position.inMilliseconds;
     if (ms < 0 || (ms - head.positionMs).abs() < _positionStepMs) return;
     head.positionMs = ms;
+    if (queue.isEmpty && identical(head, _localCurrent)) {
+      final playlist = activePlaylist;
+      if (playlist != null) {
+        playlist.positionMs = ms;
+        final now = DateTime.now();
+        if (_lastLocalPersistAt == null ||
+            now.difference(_lastLocalPersistAt!) >= const Duration(seconds: 10)) {
+          _lastLocalPersistAt = now;
+          _persistPlaylistState();
+        }
+      }
+    }
     if (ms > 0) _cancelWatchdog();
     notifyListeners();
   }
@@ -705,9 +1389,16 @@ class AppState extends ChangeNotifier {
   }
 
   void _onEngineCompleted() {
-    if (_disposed || _loading || queue.isEmpty) return;
-    EnodeLog.i('player', '#$_playGen 播放结束，自动切下一首');
-    _advanceHead();
+    if (_disposed || _loading) return;
+    if (queue.isNotEmpty) {
+      EnodeLog.i('player', '#$_playGen 播放结束，自动切下一首');
+      _advanceHead();
+      return;
+    }
+    if (_localEnabled && _localCurrent != null) {
+      EnodeLog.i('player', '#$_playGen 播放结束，自建列表下一首');
+      _advanceLocal();
+    }
   }
 
   void _onEngineError(String message) {
@@ -732,7 +1423,7 @@ class AppState extends ChangeNotifier {
   }
 
   /// 解析队首播放地址并交给引擎；队首没变时旧任务的结果直接丢弃。
-  Future<void> _loadCurrent() async {
+  Future<void> _loadCurrent({int startAtMs = 0}) async {
     final e = engine;
     if (e == null) return;
     final gen = ++_playGen;
@@ -745,8 +1436,12 @@ class AppState extends ChangeNotifier {
     }
 
     _loading = true;
-    head.positionMs = 0;
-    EnodeLog.i('player', '#$gen 开始加载《${head.title}》/${head.artist}');
+    head.positionMs = startAtMs > 0 ? startAtMs : 0;
+    EnodeLog.i(
+      'player',
+      '#$gen 开始加载《${head.title}》/${head.artist}'
+      '${startAtMs > 0 ? ' 续播 ${_fmt(startAtMs)}' : ''}',
+    );
     notifyListeners();
 
     AudioRef? resolved;
@@ -768,10 +1463,16 @@ class AppState extends ChangeNotifier {
     await audioOutput?.ready;
     if (_disposed || gen != _playGen) return;
     var current = resolved;
+    final resumeAt = startAtMs > 0 ? Duration(milliseconds: startAtMs) : null;
     Object? openError;
     for (var attempt = 0;; attempt++) {
       try {
-        await e.open(current.uri, autoplay: playing, headers: current.headers);
+        await e.open(
+          current.uri,
+          autoplay: playing,
+          headers: current.headers,
+          start: resumeAt,
+        );
         openError = null;
         break;
       } catch (err) {
@@ -801,13 +1502,19 @@ class AppState extends ChangeNotifier {
     // 只记来源 host：直链的 path 与 query 可能带签名，不该进日志。
     EnodeLog.i('player', '#$gen 开播《${head.title}》 ${current.uri.scheme}://${current.uri.host}');
 
-    _loading = false;
     try {
       await e.setVolume(volume);
     } catch (_) {}
+    final actualStart = startAtMs > 0 ? startAtMs : 0;
+    if (actualStart > 0) {
+      head.positionMs = actualStart;
+      _lastLocalPersistAt = DateTime.now();
+    }
+    if (_disposed || gen != _playGen) return;
+    _loading = false;
     // libmpv 遇到损坏/不支持的格式通常不会让 open 抛错，只发 error。
     // 8 秒内既没有时长也没有进度就当作打不开，跳过以免队列卡死。
-    _armWatchdog(head, gen);
+    _armWatchdog(head, gen, baselineMs: actualStart);
     notifyListeners();
   }
 
@@ -816,21 +1523,21 @@ class AppState extends ChangeNotifier {
   /// 直链过期最常见的表现是「open 不报错、但永远读不出内容」，所以先按过期处理一次
   /// （重取链 + 重开），只有第二次仍然没有进度才跳过——否则会把本来能救回来的歌直接跳掉。
   /// 救援只做一次，真正的坏文件不会反复卡 8 秒。
-  void _armWatchdog(QueueItem head, int gen, {bool allowRecover = true}) {
+  void _armWatchdog(QueueItem head, int gen, {bool allowRecover = true, int baselineMs = 0}) {
     _cancelWatchdog();
     _watchdog = Timer(watchdogPeriod, () async {
       if (_disposed || gen != _playGen) return;
       final np = nowPlaying;
-      if (np == null || np.positionMs > 0) return;
+      if (np == null || np.positionMs > baselineMs) return;
       if (!playing || (audioOutput?.blocksPlaybackRecovery ?? false)) {
         // 暂停中（含切上一首后 seek 到 0 却还没出进度事件）：不动它，
         // 重新计时等恢复播放——「暂停太久被判死」比「坏链晚 8 秒跳掉」伤得多。
-        _armWatchdog(head, gen, allowRecover: allowRecover);
+        _armWatchdog(head, gen, allowRecover: allowRecover, baselineMs: baselineMs);
         return;
       }
       EnodeLog.w('player', '#$gen ${watchdogPeriod.inSeconds}s 没进度，按直链过期处理');
-      if (allowRecover && await _recoverStaleLink(head, gen)) {
-        _armWatchdog(head, gen, allowRecover: false);
+      if (allowRecover && await _recoverStaleLink(head, gen, startAtMs: baselineMs)) {
+        _armWatchdog(head, gen, allowRecover: false, baselineMs: baselineMs);
         return;
       }
       if (_disposed || gen != _playGen) return;
@@ -839,7 +1546,7 @@ class AppState extends ChangeNotifier {
   }
 
   /// 丢掉可能过期的直链、重新取一次并重开播放。返回新链是否已交给引擎。
-  Future<bool> _recoverStaleLink(QueueItem head, int gen) async {
+  Future<bool> _recoverStaleLink(QueueItem head, int gen, {int startAtMs = 0}) async {
     final e = engine;
     if (e == null) return false;
     library.invalidateAudio(head.trackKey);
@@ -857,7 +1564,13 @@ class AppState extends ChangeNotifier {
       return false;
     }
     try {
-      await e.open(refetched.uri, autoplay: playing, headers: refetched.headers);
+      await e.open(
+        refetched.uri,
+        autoplay: playing,
+        headers: refetched.headers,
+        start: startAtMs > 0 ? Duration(milliseconds: startAtMs) : null,
+      );
+      if (startAtMs > 0) head.positionMs = startAtMs;
       EnodeLog.i('player', '#$gen 救援成功，新直链已重开');
       return true;
     } catch (e) {
@@ -875,42 +1588,125 @@ class AppState extends ChangeNotifier {
     if (_disposed || gen != _playGen) return;
     _playbackError = message;
     EnodeLog.w('player', '#$gen 跳过《${nowPlaying?.title ?? ''}》：$message');
-    _advanceHead();
+    if (queue.isNotEmpty) {
+      _advanceHead();
+    } else {
+      _advanceLocal(afterFailure: true);
+    }
   }
 
-  /// 队首出队，后面顶上；空队列则停止播放。
+  /// 点歌队首出队，后面顶上；队列空了就回到自建列表。
   void _advanceHead() {
     if (queue.isEmpty) return;
     queue.removeAt(0);
-    final head = nowPlaying;
-    if (head == null) {
-      playing = false;
-      _cancelWatchdog();
-      unawaited(engine?.stop());
-    } else if (engine != null) {
-      unawaited(_loadCurrent());
+    _afterQueueHeadChanged();
+  }
+
+  void _afterQueueHeadChanged() {
+    if (queue.isNotEmpty) {
+      final head = queue.first;
+      if (engine != null) unawaited(_loadCurrent());
+      unawaited(_warmArt(head.trackKey));
+      notifyListeners();
+      edge.notifyTrackChanged();
+      return;
     }
-    unawaited(_warmArt(head?.trackKey));
-    notifyListeners();
-    edge.notifyTrackChanged();
+    _resumeLocalAfterQueue();
   }
 
   void togglePlay() {
-    if (engine != null && nowPlaying == null) return;
-    playing = !playing;
-    if (engine != null) {
-      unawaited(playing ? engine!.play() : engine!.pause());
+    if (queue.isEmpty && nowPlaying == null) {
+      startLocalPlayback();
+      return;
     }
-    EnodeLog.i('player', '${playing ? '继续播放' : '暂停'} 位置=${_fmt(nowPlaying?.positionMs ?? 0)}');
+    final np = nowPlaying;
+    if (np == null) return;
+    playing = !playing;
+    if (queue.isEmpty) {
+      if (playing) {
+        _autoStartSuppressed = false;
+        if (_localNeedsLoad) {
+          unawaited(_startLocalAtCurrent(resume: true));
+        } else if (engine != null) {
+          unawaited(engine!.play());
+        }
+        _lastLocalPersistAt = DateTime.now();
+      } else {
+        _captureLocalPosition();
+        _autoStartSuppressed = true;
+        _persistPlaylistState();
+        if (engine != null) unawaited(engine!.pause());
+      }
+    } else {
+      if (!playing) {
+        // 点歌也被手动暂停：队列清空后不该突然把自建列表叫醒。
+        _localWasPlayingBeforeQueue = false;
+        _autoStartSuppressed = true;
+      }
+      if (engine != null) {
+        unawaited(playing ? engine!.play() : engine!.pause());
+      }
+    }
+    EnodeLog.i('player', '${playing ? '继续播放' : '暂停'} 位置=${_fmt(np.positionMs)}');
     notifyListeners();
     edge.notifyPlayback();
   }
 
-  /// 「下一首」：移出队首让后面顶上。
+  /// 自建列表的播放/暂停；点歌插播期间只切换「播完后是否续播」。
+  void toggleLocalPlayback() {
+    if (queue.isNotEmpty) return;
+    if (_localEnabled && _localCurrent != null && playing) {
+      pauseLocalPlayback();
+    } else {
+      startLocalPlayback();
+    }
+  }
+
+  void startLocalPlayback() {
+    final playlist = activePlaylist;
+    if (playlist == null || playlist.tracks.isEmpty) return;
+    _autoStartSuppressed = false;
+    _localEnabled = true;
+    playing = true;
+    if (queue.isNotEmpty) {
+      _localWasPlayingBeforeQueue = true;
+      _localNeedsLoad = true;
+      notifyListeners();
+      return;
+    }
+    if (_localCurrent != null && !_localNeedsLoad) {
+      if (engine != null) unawaited(engine!.play());
+      _lastLocalPersistAt = DateTime.now();
+      notifyListeners();
+      edge.notifyPlayback();
+      return;
+    }
+    unawaited(_startLocalAtCurrent(resume: true));
+  }
+
+  void pauseLocalPlayback() {
+    if (queue.isNotEmpty) return;
+    _captureLocalPosition();
+    _autoStartSuppressed = true;
+    playing = false;
+    _persistPlaylistState();
+    if (engine != null) unawaited(engine!.pause());
+    EnodeLog.i('playlist', '暂停自建列表《${activePlaylist?.name ?? ''}》');
+    notifyListeners();
+    edge.notifyPlayback();
+  }
+
+  /// 「下一首」：点歌优先出队；队列空了就切自建列表下一首。
   void skip() {
-    if (queue.isEmpty) return;
-    EnodeLog.i('player', '手动下一首（当前《${nowPlaying?.title ?? ''}》）');
-    _advanceHead();
+    if (queue.isNotEmpty) {
+      EnodeLog.i('player', '手动下一首（当前《${nowPlaying?.title ?? ''}》）');
+      _advanceHead();
+      return;
+    }
+    if (_localEnabled && _localCurrent != null) {
+      EnodeLog.i('playlist', '手动下一首（当前《${_localCurrent!.title}》）');
+      _advanceLocal();
+    }
   }
 
   /// 「上一首」：没有历史队列，回到当前曲目开头。
@@ -926,7 +1722,16 @@ class AppState extends ChangeNotifier {
     final upper = head.durationMs > 0 ? head.durationMs : (1 << 31);
     final ms = positionMs.clamp(0, upper);
     head.positionMs = ms;
+    if (queue.isEmpty && identical(head, _localCurrent)) {
+      final playlist = activePlaylist;
+      if (playlist != null) {
+        playlist.positionMs = ms;
+        _lastLocalPersistAt = DateTime.now();
+        _persistPlaylistState();
+      }
+    }
     EnodeLog.d('player', 'seek 到 ${_fmt(ms)}');
+    _cancelWatchdog();
     notifyListeners();
     unawaited(engine?.seek(Duration(milliseconds: ms)));
     if (engine != null) edge.notifyPlayback();
@@ -945,20 +1750,9 @@ class AppState extends ChangeNotifier {
     queue.removeAt(i);
     final headChanged = i == 0;
     if (headChanged) {
-      final head = nowPlaying;
-      if (head == null) {
-        playing = false;
-        _cancelWatchdog();
-        unawaited(engine?.stop());
-      } else if (engine != null) {
-        unawaited(_loadCurrent());
-      }
-      unawaited(_warmArt(head?.trackKey));
-    }
-    notifyListeners();
-    if (headChanged) {
-      edge.notifyTrackChanged();
+      _afterQueueHeadChanged();
     } else {
+      notifyListeners();
       edge.notifyQueueChanged();
     }
   }
@@ -974,13 +1768,9 @@ class AppState extends ChangeNotifier {
     queue.insert(to, item);
     final headChanged = from == 0 || to == 0;
     if (headChanged) {
-      unawaited(_warmArt(nowPlaying?.trackKey));
-      if (engine != null) unawaited(_loadCurrent());
-    }
-    notifyListeners();
-    if (headChanged) {
-      edge.notifyTrackChanged();
+      _afterQueueHeadChanged();
     } else {
+      notifyListeners();
       edge.notifyQueueChanged();
     }
   }
@@ -1017,6 +1807,16 @@ class AppState extends ChangeNotifier {
       return const EnqueueResult.rejected(errSourceUnavailable, '取链超时，稍后再点一次试试');
     }
     final wasEmpty = queue.isEmpty;
+    if (wasEmpty) {
+      // 先把自建列表停在当前位置；点歌队列清空后从这里续播。
+      _captureLocalPosition();
+      _localWasPlayingBeforeQueue = _localEnabled && _localCurrent != null && playing;
+      _scheduleStopPending = false;
+      _scheduledNextId = null;
+      // 从「加入队列」到「真正开始加载」之间，旧的自建列表可能刚好播完；
+      // 先把 loading 立起来，避免完成事件把刚点进来的这首直接顶掉。
+      if (engine != null) _loading = true;
+    }
     EnodeLog.i(
       'queue',
       '接受《${track.title}》/${track.artist} seat=${req.seat ?? '未提供'} 队列=${queue.length + 1}',
@@ -1030,13 +1830,16 @@ class AppState extends ChangeNotifier {
     ));
     if (wasEmpty) {
       playing = true;
+      _localNeedsLoad = true;
       unawaited(_warmArt(track.trackKey));
       if (engine != null) unawaited(_loadCurrent());
     }
     notifyListeners();
-    edge.notifyQueueChanged();
-    // 空闲时入队会直接开播，此时曲目已切换，必须重发歌词主题。
-    if (wasEmpty) edge.publishLyric();
+    if (wasEmpty) {
+      edge.notifyTrackChanged();
+    } else {
+      edge.notifyQueueChanged();
+    }
     return EnqueueResult.accepted(queue.length);
   }
 
@@ -1183,6 +1986,8 @@ class AppState extends ChangeNotifier {
 
   @override
   void dispose() {
+    _captureLocalPosition();
+    if (_playlistsLoaded) _persistPlaylistState();
     _disposed = true;
     webDav?.removeListener(_onWebDavChanged);
     webDav?.dispose();
@@ -1190,6 +1995,8 @@ class AppState extends ChangeNotifier {
     unawaited(_lyricShareServer?.stop() ?? Future.value());
     _monitorWatch?.cancel();
     _monitorWatch = null;
+    _scheduleTimer?.cancel();
+    _scheduleTimer = null;
     _tick?.cancel();
     _cancelWatchdog();
     unawaited(_positionSub?.cancel());

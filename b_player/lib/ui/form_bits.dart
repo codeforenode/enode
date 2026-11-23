@@ -83,6 +83,9 @@ class FormInput extends StatelessWidget {
     this.suffix,
     this.maxLines = 1,
     this.obscureText = false,
+    this.focusNode,
+    this.autofocus = false,
+    this.onSubmitted,
   });
   final TextEditingController controller;
   final String? hint;
@@ -90,6 +93,9 @@ class FormInput extends StatelessWidget {
   final Widget? suffix;
   final int maxLines;
   final bool obscureText;
+  final FocusNode? focusNode;
+  final bool autofocus;
+  final ValueChanged<String>? onSubmitted;
 
   @override
   Widget build(BuildContext context) => TextField(
@@ -97,6 +103,9 @@ class FormInput extends StatelessWidget {
         onChanged: onChanged,
         maxLines: maxLines,
         obscureText: obscureText,
+        focusNode: focusNode,
+        autofocus: autofocus,
+        onSubmitted: onSubmitted,
         style: TextStyle(fontSize: 12.5, color: C.txt),
         decoration: InputDecoration(
           isDense: true,

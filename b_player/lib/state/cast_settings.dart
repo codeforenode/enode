@@ -1,11 +1,15 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:screen_retriever/screen_retriever.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../desktop/monitor_rects.dart';
+import '../edge/atomic_json.dart';
 
 /// Windows 歌词投放的设置模型（一次性存成 cast.settings.v1 一个 JSON 串）。
 ///
@@ -1094,12 +1098,30 @@ class CastSettings {
     return copyWith(targets: next);
   }
 
+  /// 放应用自身数据目录：素材与投放配置会随使用增长，不再和所有小配置一起
+  /// 挤在 prefs 里整包重写。拿不到目录（单元测试/桌面预览）时仍读写旧 prefs。
+  static Future<File?> _file() async {
+    try {
+      final support = await getApplicationSupportDirectory();
+      return File(p.join(support.path, 'data', 'cast.json'));
+    } catch (_) {
+      return null;
+    }
+  }
+
   static Future<CastSettings> load() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_key);
-      if (raw != null) return decode(raw);
-      final legacy = prefs.getString(_legacyKey);
+      final file = await _file();
+      if (file != null) {
+        final raw = await AtomicJsonFile(file).read();
+        if (raw is Map) return _decodeMap(raw);
+        final legacy = await _loadPrefs();
+        if (legacy == null) return defaults;
+        final migrated = decode(legacy);
+        await migrated.save();
+        return migrated;
+      }
+      final legacy = await _loadPrefs();
       if (legacy == null) return defaults;
       final migrated = decode(legacy);
       await migrated.save();
@@ -1110,9 +1132,28 @@ class CastSettings {
     }
   }
 
-  Future<void> save() async {
+  static Future<String?> _loadPrefs() async {
     try {
-      (await SharedPreferences.getInstance()).setString(_key, toJsonString());
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString(_key) ?? prefs.getString(_legacyKey);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> save() async {
+    final text = toJsonString();
+    final file = await _file();
+    if (file != null) {
+      try {
+        await AtomicJsonFile(file).writeText(text);
+        return;
+      } catch (_) {
+        // 文件名被占用等情况下退回 prefs，至少本次会话的配置不丢。
+      }
+    }
+    try {
+      (await SharedPreferences.getInstance()).setString(_key, text);
     } catch (_) {}
   }
 
@@ -1123,12 +1164,14 @@ class CastSettings {
     try {
       final raw = jsonDecode(text);
       if (raw is! Map) return defaults;
-      if (raw['materials'] is List || raw['v'] == 2) return _fromV2(raw);
-      return _fromV1(raw);
+      return _decodeMap(raw);
     } catch (_) {
       return defaults;
     }
   }
+
+  static CastSettings _decodeMap(Map raw) =>
+      raw['materials'] is List || raw['v'] == 2 ? _fromV2(raw) : _fromV1(raw);
 
   static CastSettings _fromV2(Map raw) {
     final materials = <CastMaterial>[

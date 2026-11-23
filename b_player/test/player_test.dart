@@ -13,6 +13,7 @@ import 'package:b_player/edge/protocol.dart';
 import 'package:b_player/log.dart';
 import 'package:b_player/state/app_state.dart';
 import 'package:b_player/state/app_settings.dart';
+import 'package:b_player/state/self_playlist.dart';
 import 'package:b_player/ui/settings_dialog.dart';
 
 import 'l10n_harness.dart';
@@ -71,6 +72,7 @@ class _FakeEngine implements AudioEngine {
 
   final List<Uri> opened = [];
   Map<String, String>? lastHeaders;
+  Duration? lastStart;
   bool lastAutoplay = true;
   bool playing = false;
   int playCalls = 0;
@@ -92,9 +94,15 @@ class _FakeEngine implements AudioEngine {
   Stream<String> get errorStream => _error.stream;
 
   @override
-  Future<void> open(Uri uri, {bool autoplay = true, Map<String, String>? headers}) async {
+  Future<void> open(
+    Uri uri, {
+    bool autoplay = true,
+    Map<String, String>? headers,
+    Duration? start,
+  }) async {
     opened.add(uri);
     lastHeaders = headers;
+    lastStart = start;
     lastAutoplay = autoplay;
     if (uri.path.contains('bad')) throw StateError('解码失败');
     playing = autoplay;
@@ -493,5 +501,102 @@ void main() {
     expect(text, contains('手动下一首'), reason: '切歌操作要有记录');
     expect(text, contains('[lyric]'), reason: '取词过程要有记录');
     expect(text, contains('取词成功'), reason: '取词结果要有记录');
+  });
+
+  test('点歌插播压过自建列表，队列播完从原位置续播', () async {
+    final h = _build();
+    addTearDown(h.state.dispose);
+
+    h.state.createPlaylist('日常', PlaylistMode.sequential);
+    expect(h.state.addToPlaylist('fake:a'), isTrue);
+    h.state.startLocalPlayback();
+    await pumpEventQueue();
+
+    expect(h.state.nowPlaying!.trackKey, 'fake:a');
+    expect(h.state.queue, isEmpty);
+    expect(h.state.localOutputActive, isTrue);
+
+    h.engine.emitPosition(1200);
+    await pumpEventQueue();
+    expect(h.state.localSavedPosition, 1200);
+
+    await _enqueue(h.state, 'fake:b');
+    await pumpEventQueue();
+
+    expect(h.state.queue, hasLength(1));
+    expect(h.state.nowPlaying!.trackKey, 'fake:b', reason: '队首点歌必须盖过自建列表');
+    expect(h.state.localInterrupted, isTrue);
+    expect(h.state.localSavedPosition, 1200);
+
+    h.engine.emitCompleted();
+    await pumpEventQueue();
+
+    expect(h.state.queue, isEmpty);
+    expect(h.state.nowPlaying!.trackKey, 'fake:a');
+    expect(h.state.playing, isTrue);
+    expect(h.state.localOutputActive, isTrue);
+    expect(h.engine.lastStart, const Duration(milliseconds: 1200),
+        reason: '续播位置要交给引擎在加载时生效，open 后再 seek 会被 libmpv 丢掉');
+    expect(h.engine.lastSeek, isNull);
+  });
+
+  test('手动暂停点歌后，队列播完不再唤醒自建列表', () async {
+    final h = _build();
+    addTearDown(h.state.dispose);
+
+    h.state.createPlaylist('日常', PlaylistMode.sequential);
+    h.state.addToPlaylist('fake:a');
+    h.state.startLocalPlayback();
+    await pumpEventQueue();
+    h.engine.emitPosition(900);
+    await pumpEventQueue();
+
+    await _enqueue(h.state, 'fake:b');
+    await pumpEventQueue();
+    h.state.togglePlay();
+    await pumpEventQueue();
+    expect(h.state.playing, isFalse);
+
+    h.engine.emitCompleted();
+    await pumpEventQueue();
+
+    expect(h.state.queue, isEmpty);
+    expect(h.state.nowPlaying!.trackKey, 'fake:a');
+    expect(h.state.nowPlaying!.positionMs, 900);
+    expect(h.state.playing, isFalse);
+    expect(h.engine.lastSeek, isNull, reason: '没有用户指令时不要自动续播');
+    expect(h.engine.lastStart, isNull, reason: '没有用户指令时不要自动续播');
+  });
+
+  test('自建列表先暂停再遇点歌，队列清空后仍保持暂停', () async {
+    final h = _build();
+    addTearDown(h.state.dispose);
+
+    h.state.createPlaylist('日常', PlaylistMode.sequential);
+    h.state.addToPlaylist('fake:a');
+    h.state.startLocalPlayback();
+    await pumpEventQueue();
+    h.engine.emitPosition(500);
+    await pumpEventQueue();
+
+    h.state.togglePlay();
+    await pumpEventQueue();
+    expect(h.state.playing, isFalse);
+
+    await _enqueue(h.state, 'fake:b');
+    await pumpEventQueue();
+    expect(h.state.localInterrupted, isFalse, reason: '本来就没在放，不算被打断');
+
+    h.engine.emitCompleted();
+    await pumpEventQueue();
+
+    expect(h.state.nowPlaying!.trackKey, 'fake:a');
+    expect(h.state.playing, isFalse);
+    expect(h.state.nowPlaying!.positionMs, 500);
+
+    h.state.togglePlay();
+    await pumpEventQueue();
+    expect(h.state.playing, isTrue);
+    expect(h.engine.lastStart, const Duration(milliseconds: 500));
   });
 }
