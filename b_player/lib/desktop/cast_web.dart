@@ -218,7 +218,6 @@ Map<String, Object?> castWebItem(CastMaterial m, CastPlacement p) => {
       },
       if (m.type == CastMaterialType.url) ...{
         'url': m.url.trim(),
-        'refresh': m.refreshSec,
         'rev': m.rev,
         // 固定网页视口（如 1920×1080）；0 = 视口跟随投放框（旧行为）。
         if (m.viewportW > 0 && m.viewportH > 0) 'vw': m.viewportW,

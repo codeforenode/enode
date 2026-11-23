@@ -249,7 +249,7 @@ void main() {
     final state = _state(const [_main]);
     await _pumpPanel(tester, state, onOpenUrlInteract: opened.add);
     await _addViaMenu(tester, l10n.screenTypeUrl);
-    // 网址栏是检查器里第一个 TextFormField（另一个是刷新间隔）。
+    // 网址栏是检查器里第一个 TextFormField（后面还有页面尺寸的宽高框）。
     await tester.enterText(find.byType(TextFormField).first, 'https://ktv.example.com/page');
     await tester.pump();
     await _tapInInspector(tester, find.text(l10n.screenUrlInteract));

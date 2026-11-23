@@ -2035,9 +2035,6 @@ class AppL10nEn extends AppL10n {
       'Select a screen and start casting to open the interactive window.';
 
   @override
-  String get screenRefresh => 'Refresh';
-
-  @override
   String get screenPageSize => 'Page size';
 
   @override
@@ -2050,9 +2047,6 @@ class AppL10nEn extends AppL10n {
   @override
   String get screenFrameRateHint =>
       'One frame rate for the whole canvas (like OBS, it cannot vary per material); applies immediately.';
-
-  @override
-  String get screenSeconds => 'sec';
 
   @override
   String get screenUrlEmbedNote =>

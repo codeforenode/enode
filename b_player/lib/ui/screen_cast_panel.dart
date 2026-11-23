@@ -2261,20 +2261,6 @@ class _ScreenCastPanelState extends State<ScreenCastPanel> {
           ),
           _note(Icons.aspect_ratio_rounded, t.screenPageSizeHint),
           const SizedBox(height: 4),
-          _row(
-            t.screenRefresh,
-            Row(children: [
-              SizedBox(
-                width: 64,
-                child: _textField('refresh', '${m.refreshSec}', (v) {
-                  final n = int.tryParse(v.trim());
-                  if (n != null) _editMaterial(m.id, (x) => x.copyWith(refreshSec: n.clamp(0, 86400)));
-                }, keyboard: TextInputType.number),
-              ),
-              const SizedBox(width: 6),
-              Text(t.screenSeconds, style: kMini),
-            ]),
-          ),
           _switchRow(t.screenScreenSound, p.sound, (v) => _setSound(p, v)),
           if (p.sound)
             _sliderRow(t.screenVolume, p.volume.toDouble(), 0, 100, 20, '%',

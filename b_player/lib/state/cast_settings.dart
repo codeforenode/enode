@@ -441,7 +441,6 @@ class CastMaterial {
     this.radius = 0,
     this.loop = true,
     this.autoplay = true,
-    this.refreshSec = 0,
     this.rev = 0,
     this.viewportW = 0,
     this.viewportH = 0,
@@ -475,9 +474,6 @@ class CastMaterial {
   final double radius;
   final bool loop;
   final bool autoplay;
-
-  /// 网址素材自动重载间隔（秒），0 表示不重载。
-  final int refreshSec;
 
   /// 手动重载计数：加一就让投放页丢掉旧 document，重新载入同一条网址。
   final int rev;
@@ -523,7 +519,6 @@ class CastMaterial {
     double? radius,
     bool? loop,
     bool? autoplay,
-    int? refreshSec,
     int? rev,
     int? viewportW,
     int? viewportH,
@@ -547,7 +542,6 @@ class CastMaterial {
         radius: radius ?? this.radius,
         loop: loop ?? this.loop,
         autoplay: autoplay ?? this.autoplay,
-        refreshSec: refreshSec ?? this.refreshSec,
         rev: rev ?? this.rev,
         viewportW: viewportW ?? this.viewportW,
         viewportH: viewportH ?? this.viewportH,
@@ -562,7 +556,6 @@ class CastMaterial {
         if (isMedia) 'src': source.name,
         if (type == CastMaterialType.text || type == CastMaterialType.idleText) 'text': text,
         if (type == CastMaterialType.url) ...{
-          'refresh': refreshSec,
           'rev': rev,
           if (viewportW > 0 && viewportH > 0) ...{
             'vw': viewportW,
@@ -611,7 +604,6 @@ class CastMaterial {
       radius: ((raw['r'] as num?)?.toDouble() ?? 0).clamp(0.0, 400.0),
       loop: raw['loop'] != false,
       autoplay: raw['auto'] != false,
-      refreshSec: ((raw['refresh'] as num?)?.toInt() ?? 0).clamp(0, 86400),
       rev: ((raw['rev'] as num?)?.toInt() ?? 0).clamp(0, 1 << 30),
       viewportW: ((raw['vw'] as num?)?.toInt() ?? 0).clamp(0, 10000),
       viewportH: ((raw['vh'] as num?)?.toInt() ?? 0).clamp(0, 10000),

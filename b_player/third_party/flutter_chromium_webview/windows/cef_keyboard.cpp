@@ -158,26 +158,35 @@ bool SendKeyMessageToCef(CefRefPtr<CefBrowser> browser, HWND window, UINT messag
         const auto result = DumpComposition(context, GCS_RESULTSTR);
         LogImeDebug("  result %s\n", result.value.c_str());
         host->SetFocus(true);
-        // Windowless IME text APIs never reach an out-of-process iframe, and
-        // every cast page lives in one. Key events are routed to whichever
-        // frame has focus in any process, so type the result as characters.
+        // Windowless IME text APIs never reach an out-of-process iframe on
+        // CEF 149 (ImeCommitText targets the main frame only; master added
+        // GetFocusedWidgetForIme), and every cast page lives in one. Key
+        // events are routed to whichever frame has focus in any process, so
+        // type the result as characters.
         const std::wstring text = Composition(context, GCS_RESULTSTR);
         for (size_t i = 0; i < text.size(); ++i) {
           const char16_t unit = static_cast<char16_t>(text[i]);
+          int code_point = unit;
           if (unit >= 0xD800 && unit <= 0xDBFF && i + 1 < text.size()) {
-            // Paired surrogates cannot travel as a single character event.
+            // Paired surrogates: ui::KeyEvent::FromCharacter takes the whole
+            // char32_t, so send one event carrying the full code point
+            // instead of halves that Blink cannot insert on their own.
             const char16_t low = static_cast<char16_t>(text[i + 1]);
             if (low >= 0xDC00 && low <= 0xDFFF) {
-              std::wstring pair{text[i], text[i + 1]};
-              host->ImeCommitText(pair, CefRange::InvalidRange(), 0);
+              code_point = 0x10000 + ((unit - 0xD800) << 10) + (low - 0xDC00);
               ++i;
-              continue;
             }
           }
+          // CEF 149 rebuilds the inserted character from windows_key_code
+          // alone (TranslateUiKeyEvent calls ui::KeyEvent::FromCharacter)
+          // and ignores `character`; leaving it at 0 silently drops the text.
+          // Same shape as the WM_CHAR path, where wparam is the character.
           CefKeyEvent key;
           key.type = KEYEVENT_CHAR;
+          key.windows_key_code = code_point;
           key.character = key.unmodified_character = unit;
           host->SendKeyEvent(key);
+          LogImeDebug("  commit cp=%d\n", code_point);
         }
         committed = true;
       }

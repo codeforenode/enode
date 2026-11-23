@@ -1971,9 +1971,6 @@ class AppL10nZh extends AppL10n {
   String get castMirrorNeedsCasting => '請先勾選螢幕開始投放，互動視窗才能開啟。';
 
   @override
-  String get screenRefresh => '刷新間隔';
-
-  @override
   String get screenPageSize => '頁面尺寸';
 
   @override
@@ -1984,9 +1981,6 @@ class AppL10nZh extends AppL10n {
 
   @override
   String get screenFrameRateHint => '整塊畫布共用一個更新率（與 OBS 一樣不能按素材分開），調整後立即生效。';
-
-  @override
-  String get screenSeconds => '秒';
 
   @override
   String get screenUrlEmbedNote =>
@@ -4373,9 +4367,6 @@ class AppL10nZhHans extends AppL10nZh {
   String get castMirrorNeedsCasting => '请先勾选屏幕开始投放，交互窗口才能开启。';
 
   @override
-  String get screenRefresh => '刷新间隔';
-
-  @override
   String get screenPageSize => '页面尺寸';
 
   @override
@@ -4386,9 +4377,6 @@ class AppL10nZhHans extends AppL10nZh {
 
   @override
   String get screenFrameRateHint => '整块画布共用一个刷新率（与 OBS 一样不能按素材分开），调整后立即生效。';
-
-  @override
-  String get screenSeconds => '秒';
 
   @override
   String get screenUrlEmbedNote =>
@@ -6777,9 +6765,6 @@ class AppL10nZhHant extends AppL10nZh {
   String get castMirrorNeedsCasting => '請先勾選螢幕開始投放，互動視窗才能開啟。';
 
   @override
-  String get screenRefresh => '刷新間隔';
-
-  @override
   String get screenPageSize => '頁面尺寸';
 
   @override
@@ -6790,9 +6775,6 @@ class AppL10nZhHant extends AppL10nZh {
 
   @override
   String get screenFrameRateHint => '整塊畫布共用一個更新率（與 OBS 一樣不能按素材分開），調整後立即生效。';
-
-  @override
-  String get screenSeconds => '秒';
 
   @override
   String get screenUrlEmbedNote =>

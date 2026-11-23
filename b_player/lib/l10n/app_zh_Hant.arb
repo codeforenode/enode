@@ -689,12 +689,10 @@
     }
   },
   "castMirrorNeedsCasting": "請先勾選螢幕開始投放，互動視窗才能開啟。",
-  "screenRefresh": "刷新間隔",
   "screenPageSize": "頁面尺寸",
   "screenPageSizeHint": "瀏覽器按這個尺寸排版，再等比縮放進投放框；兩項留空 = 跟隨投放框。",
   "screenFrameRate": "更新率",
   "screenFrameRateHint": "整塊畫布共用一個更新率（與 OBS 一樣不能按素材分開），調整後立即生效。",
-  "screenSeconds": "秒",
   "screenUrlEmbedNote": "對方網站若禁止嵌入（X-Frame-Options / CSP），畫面會空白；可改用圖片或影片素材。",
   "screenUrlPreviewHint": "投放時在這裡顯示網頁",
   "screenScreenSound": "本屏聲音",

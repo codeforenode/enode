@@ -3556,12 +3556,6 @@ abstract class AppL10n {
   /// **'請先勾選螢幕開始投放，互動視窗才能開啟。'**
   String get castMirrorNeedsCasting;
 
-  /// No description provided for @screenRefresh.
-  ///
-  /// In zh_Hant, this message translates to:
-  /// **'刷新間隔'**
-  String get screenRefresh;
-
   /// No description provided for @screenPageSize.
   ///
   /// In zh_Hant, this message translates to:
@@ -3585,12 +3579,6 @@ abstract class AppL10n {
   /// In zh_Hant, this message translates to:
   /// **'整塊畫布共用一個更新率（與 OBS 一樣不能按素材分開），調整後立即生效。'**
   String get screenFrameRateHint;
-
-  /// No description provided for @screenSeconds.
-  ///
-  /// In zh_Hant, this message translates to:
-  /// **'秒'**
-  String get screenSeconds;
 
   /// No description provided for @screenUrlEmbedNote.
   ///

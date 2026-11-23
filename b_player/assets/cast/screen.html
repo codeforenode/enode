@@ -173,7 +173,7 @@
     f.setAttribute('scrolling', 'no');
     f.setAttribute('referrerpolicy', 'no-referrer');
     el.appendChild(f);
-    return { frame: f, timer: null, loaded: '' };
+    return { frame: f, loaded: '', loadedRev: 0 };
   }
 
   function makeNode(it) {
@@ -191,7 +191,6 @@
   }
 
   function removeNode(node) {
-    if (node.url && node.url.timer) clearInterval(node.url.timer);
     if (node.video && node.video.video) {
       try { node.video.video.pause(); } catch (e) {}
     }
@@ -465,7 +464,6 @@
     var src = str(it.url);
     if (!src) {
       node.el.replaceChildren();
-      if (node.url.timer) { clearInterval(node.url.timer); node.url.timer = null; }
       return;
     }
     attach(node.el, f);
@@ -475,11 +473,6 @@
       node.url.loaded = src;
       node.url.loadedRev = num(it.rev, 0);
       f.setAttribute('src', src);
-      if (node.url.timer) clearInterval(node.url.timer);
-      var sec = num(it.refresh, 0);
-      node.url.timer = sec > 0 ? setInterval(function () {
-        try { f.setAttribute('src', src); } catch (e) {}
-      }, sec * 1000) : null;
     }
   }
 
